@@ -1,68 +1,247 @@
 #
-#     Copyright (C) Pixar. All rights reserved.
+#   Copyright 2013 Pixar
 #
-#     This license governs use of the accompanying software. If you
-#     use the software, you accept this license. If you do not accept
-#     the license, do not use the software.
+#   Licensed under the Apache License, Version 2.0 (the "Apache License")
+#   with the following modification; you may not use this file except in
+#   compliance with the Apache License and the following modification to it:
+#   Section 6. Trademarks. is deleted and replaced with:
 #
-#     1. Definitions
-#     The terms "reproduce," "reproduction," "derivative works," and
-#     "distribution" have the same meaning here as under U.S.
-#     copyright law.  A "contribution" is the original software, or
-#     any additions or changes to the software.
-#     A "contributor" is any person or entity that distributes its
-#     contribution under this license.
-#     "Licensed patents" are a contributor's patent claims that read
-#     directly on its contribution.
+#   6. Trademarks. This License does not grant permission to use the trade
+#      names, trademarks, service marks, or product names of the Licensor
+#      and its affiliates, except as required to comply with Section 4(c) of
+#      the License and to reproduce the content of the NOTICE file.
 #
-#     2. Grant of Rights
-#     (A) Copyright Grant- Subject to the terms of this license,
-#     including the license conditions and limitations in section 3,
-#     each contributor grants you a non-exclusive, worldwide,
-#     royalty-free copyright license to reproduce its contribution,
-#     prepare derivative works of its contribution, and distribute
-#     its contribution or any derivative works that you create.
-#     (B) Patent Grant- Subject to the terms of this license,
-#     including the license conditions and limitations in section 3,
-#     each contributor grants you a non-exclusive, worldwide,
-#     royalty-free license under its licensed patents to make, have
-#     made, use, sell, offer for sale, import, and/or otherwise
-#     dispose of its contribution in the software or derivative works
-#     of the contribution in the software.
+#   You may obtain a copy of the Apache License at
 #
-#     3. Conditions and Limitations
-#     (A) No Trademark License- This license does not grant you
-#     rights to use any contributor's name, logo, or trademarks.
-#     (B) If you bring a patent claim against any contributor over
-#     patents that you claim are infringed by the software, your
-#     patent license from such contributor to the software ends
-#     automatically.
-#     (C) If you distribute any portion of the software, you must
-#     retain all copyright, patent, trademark, and attribution
-#     notices that are present in the software.
-#     (D) If you distribute any portion of the software in source
-#     code form, you may do so only under this license by including a
-#     complete copy of this license with your distribution. If you
-#     distribute any portion of the software in compiled or object
-#     code form, you may only do so under a license that complies
-#     with this license.
-#     (E) The software is licensed "as-is." You bear the risk of
-#     using it. The contributors give no express warranties,
-#     guarantees or conditions. You may have additional consumer
-#     rights under your local laws which this license cannot change.
-#     To the extent permitted under your local laws, the contributors
-#     exclude the implied warranties of merchantability, fitness for
-#     a particular purpose and non-infringement.
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the Apache License with the above modification is
+#   distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+#   KIND, either express or implied. See the Apache License for the specific
+#   language governing permissions and limitations under the Apache License.
 #
 
-add_subdirectory(tools/stringify)
+if (NOT NO_LIB)
 
-add_subdirectory(hbr)
+    #---------------------------------------------------------------------------
+    include_directories(
+        "${PROJECT_SOURCE_DIR}/opensubdiv"
+    )
 
-add_subdirectory(far)
+    #---------------------------------------------------------------------------
+    # platform dependent tweaks
+    if(APPLE OR UNIX)
+        set(PLATFORM_COMPILE_FLAGS -fPIC)
+    elseif(WIN32)
 
-add_subdirectory(osd)
+    endif()
 
-install( FILES version.h
-         DESTINATION include/
-         PERMISSIONS OWNER_READ GROUP_READ WORLD_READ )
+    add_definitions(
+        ${PLATFORM_COMPILE_FLAGS}
+    )
+
+    #---------------------------------------------------------------------------
+    if( PTEX_FOUND )
+        include_directories( "${PTEX_INCLUDE_DIR}" )
+        list(APPEND PLATFORM_CPU_LIBRARIES
+            ${PTEX_LIBRARY}
+        )
+    endif()
+
+    if( OPENMP_FOUND )
+        if (CMAKE_COMPILER_IS_GNUCXX)
+            list(APPEND PLATFORM_CPU_LIBRARIES gomp)
+        endif()
+    endif()
+
+    if( TBB_FOUND )
+        include_directories("${TBB_INCLUDE_DIR}")
+        list(APPEND PLATFORM_CPU_LIBRARIES
+            ${TBB_LIBRARIES}
+        )
+    endif()
+
+    if(OPENGL_FOUND OR OPENCL_FOUND OR DXSDK_FOUND)
+        add_subdirectory(tools/stringify)
+    endif()
+
+    if( OPENGL_FOUND )
+        if (NOT "${OPENGL_INCLUDE_DIR}" STREQUAL "")
+            include_directories("${OPENGL_INCLUDE_DIR}")
+        endif()
+        if (GLEW_FOUND)
+            include_directories("${GLEW_INCLUDE_DIR}")
+        endif()
+        list(APPEND PLATFORM_GPU_LIBRARIES
+            ${OPENGL_LIBRARY}
+        )
+    elseif( OPENGLES_FOUND )
+        include_directories("${OPENGLES_INCLUDE_DIR}")
+        list(APPEND PLATFORM_GPU_LIBRARIES
+            ${OPENGLES_LIBRARIES}
+        )
+    endif()
+
+    if( OPENGL_4_2_FOUND OR OPENGL_4_3_FOUND)
+        list(APPEND PLATFORM_GPU_LIBRARIES
+            ${GLEW_LIBRARY}
+        )
+    endif()
+
+    if( DXSDK_FOUND )
+        include_directories( "${DXSDK_INCLUDE_DIR}" )
+        list(APPEND PLATFORM_GPU_LIBRARIES
+            ${DXSDK_LIBRARIES}
+        )
+    endif()
+
+    if ( OPENCL_FOUND )
+        include_directories( "${OPENCL_INCLUDE_DIRS}" )
+        list(APPEND PLATFORM_GPU_LIBRARIES
+            ${OPENCL_LIBRARIES}
+        )
+    endif()
+
+    if( CUDA_FOUND )
+        include_directories( "${CUDA_INCLUDE_DIRS}" )
+        if (UNIX)
+            list( APPEND CUDA_NVCC_FLAGS -Xcompiler -fPIC --gpu-architecture compute_11 )
+        endif()
+    endif()
+
+
+
+    #---------------------------------------------------------------------------
+
+    add_subdirectory(hbr)
+
+    add_subdirectory(sdc)
+
+    add_subdirectory(vtr)
+
+    add_subdirectory(far)
+
+    add_subdirectory(osd)
+
+    #---------------------------------------------------------------------------
+
+    install( FILES version.h
+        DESTINATION
+            "${CMAKE_INCDIR_BASE}"
+        PERMISSIONS
+            OWNER_READ
+            GROUP_READ
+            WORLD_READ )
+
+    #---------------------------------------------------------------------------
+
+    # Build static libs ------------------------------------
+    add_library(osd_static_cpu
+        STATIC
+        version.cpp
+        $<TARGET_OBJECTS:sdc_obj>
+        $<TARGET_OBJECTS:vtr_obj>
+        $<TARGET_OBJECTS:far_obj>
+        $<TARGET_OBJECTS:osd_cpu_obj>
+    )
+    set_target_properties(osd_static_cpu PROPERTIES OUTPUT_NAME osdCPU CLEAN_DIRECT_OUTPUT 1)
+
+    target_link_libraries(osd_static_cpu
+        ${PLATFORM_CPU_LIBRARIES}
+    )
+
+    install( TARGETS osd_static_cpu DESTINATION "${CMAKE_LIBDIR_BASE}" )
+
+    if( OSD_GPU )
+        # this macro uses FindCUDA.cmake to compile .cu kernel files
+        # the target then adds the other obj dependencies and include files
+        _add_possibly_cuda_library(osd_static_gpu
+            STATIC
+                version.cpp
+                $<TARGET_OBJECTS:osd_gpu_obj>
+                ${CUDA_KERNEL_FILES}
+        )
+        set_target_properties(osd_static_gpu PROPERTIES OUTPUT_NAME osdGPU CLEAN_DIRECT_OUTPUT 1)
+
+        target_link_libraries(osd_static_gpu
+            ${PLATFORM_CPU_LIBRARIES} ${PLATFORM_GPU_LIBRARIES}
+        )
+
+        install( TARGETS osd_static_gpu DESTINATION "${CMAKE_LIBDIR_BASE}" )
+    endif()
+
+
+    # Build dynamic libs  ----------------------------------
+    if (NOT WIN32 AND NOT IOS)
+
+        # generate dynamic-link targets
+
+        #---------------------------------------------------
+        add_library(osd_dynamic_cpu
+            SHARED
+            version.cpp
+            $<TARGET_OBJECTS:sdc_obj>
+            $<TARGET_OBJECTS:vtr_obj>
+            $<TARGET_OBJECTS:far_obj>
+            $<TARGET_OBJECTS:osd_cpu_obj>
+        )
+
+        if (NOT ANDROID)
+            set_target_properties(osd_dynamic_cpu
+                PROPERTIES
+                    OUTPUT_NAME osdCPU
+                    CLEAN_DIRECT_OUTPUT 1
+                    SOVERSION ${OSD_SONAME}
+                )
+        else()
+            set_target_properties(osd_dynamic_cpu
+                PROPERTIES
+                    OUTPUT_NAME osdCPU
+                    CLEAN_DIRECT_OUTPUT 1
+                )
+        endif()
+
+        target_link_libraries(osd_dynamic_cpu
+            ${PLATFORM_CPU_LIBRARIES}
+        )
+
+        install( TARGETS osd_dynamic_cpu LIBRARY DESTINATION "${CMAKE_LIBDIR_BASE}" )
+
+        #---------------------------------------------------
+        if( OSD_GPU )
+            _add_possibly_cuda_library(osd_dynamic_gpu
+                SHARED
+                version.cpp
+                $<TARGET_OBJECTS:osd_gpu_obj>
+                ${CUDA_KERNEL_FILES}
+            )
+
+            if (NOT ANDROID)
+                set_target_properties(osd_dynamic_gpu
+                    PROPERTIES
+                        OUTPUT_NAME osdGPU
+                        CLEAN_DIRECT_OUTPUT 1
+                        SOVERSION ${OSD_SONAME}
+                    )
+            else()
+                set_target_properties(osd_dynamic_gpu
+                    PROPERTIES
+                        OUTPUT_NAME osdGPU
+                        CLEAN_DIRECT_OUTPUT 1
+                    )
+            endif()
+
+            target_link_libraries(osd_dynamic_gpu
+                osd_dynamic_cpu
+                ${PLATFORM_CPU_LIBRARIES} ${PLATFORM_GPU_LIBRARIES}
+            )
+
+            install( TARGETS osd_dynamic_gpu LIBRARY DESTINATION "${CMAKE_LIBDIR_BASE}" )
+        endif()
+
+    endif()
+
+endif()
+
+#-------------------------------------------------------------------------------

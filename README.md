@@ -1,118 +1,143 @@
 # OpenSubdiv
 
-OpenSubdiv is a set of open source libraries that implement high performance subdivision surface (subdiv) evaluation on massively parallel CPU and GPU architectures. This codepath is optimized for drawing deforming subdivs with static topology at interactive framerates. The resulting limit surface matches Pixar’s Renderman to numerical precision.
+OpenSubdiv is a set of open source libraries that implement high performance subdivision surface (subdiv) evaluation on massively parallel CPU and GPU architectures. This codepath is optimized for drawing deforming subdivs with static topology at interactive framerates. The resulting limit surface matches Pixar's Renderman to numerical precision.
 
-OpenSubdiv is covered by the [Microsoft Public License](http://www.microsoft.com/en-us/openness/licenses.aspx#MPL), and is free to use for commercial or non-commercial use. This is the same code that Pixar uses internally for animated film production. Our intent is to encourage high performance accurate subdiv drawing by giving away the "good stuff".
+OpenSubdiv is covered by the Apache license, and is free to use for commercial or non-commercial use. This is the same code that Pixar uses internally for animated film production. Our intent is to encourage high performance accurate subdiv drawing by giving away the "good stuff".
 
-OpenSubdiv is entering open beta for [SIGGRAPH 2012](http://s2012.siggraph.org/). Feel free to use it and let us know what you think.
+Feel free to use it and let us know what you think.
 
 For more details about OpenSubdiv, see [Pixar Graphics Technologies](http://graphics.pixar.com).
 
-Note that this beta code is live and will undergo significant churn as it approaches release. Expect that APIs will change as the code is continually improved.
+ * master : [![Build Status](https://travis-ci.org/PixarAnimationStudios/OpenSubdiv.svg?branch=master)](https://travis-ci.org/PixarAnimationStudios/OpenSubdiv)
+
+ * dev : [![Build Status](https://travis-ci.org/PixarAnimationStudios/OpenSubdiv.svg?branch=dev)](https://travis-ci.org/PixarAnimationStudios/OpenSubdiv)
+
+## Documents
+ * [User Documents] (http://graphics.pixar.com/opensubdiv/docs/intro.html)
+ * [Doxygen API Documents] (http://graphics.pixar.com/opensubdiv/docs/doxy_html/index.html)
+ * [Release Notes] (http://graphics.pixar.com/opensubdiv/docs/release_notes.html)
+
+## Forum
+ * [OpenSubdiv Google Groups] (https://groups.google.com/forum/embed/?place=forum/opensubdiv)
+
+## Prerequisite
+  For complete information, please refer OpenSubdiv documents:
+  [Building with CMake] (http://graphics.pixar.com/opensubdiv/docs/cmake_build.html)
+
+ * General requirements:
+
+| Lib (URL)                             | Min Version | Note       |
+| ------------------------------------- | ----------- | ---------- |
+| CMake <br> http://www.cmake.org       | 2.8.6       | *Required* |
+
+ * Osd optional requirements:
+
+| Lib (URL)                                            | Min Version    | Note           |
+| ---------------------------------------------------- | -------------- | -------------- |
+| GLEW <br> http://glew.sourceforge.net                | 1.9.0          | GL backend (Win/Linux only) |
+| CUDA <br> http://developer.nvidia.com/cuda-toolkit   | 4.0            | cuda backend   |
+| TBB  <br> https://www.threadingbuildingblocks.org    | 4.0            | TBB backend    |
+| OpenCL <br> http://www.khronos.org/opencl            | 1.1            | CL backend     |
+| DX11 SDK <br> http://www.microsoft.com/download/details.aspx?id=6812| | DX backend     |
+
+ * Examples/Documents optional requirements:
+
+| Lib (URL)                                     | Min Version | Note                |
+| --------------------------------------------- | ----------- | ------------------- |
+| GLFW <br> http://www.glfw.org                 | 3.0.0       | GL examples         |
+| Maya SDK <br> http://www.autodesk.com/maya    | 2013        | maya plugin example |
+| Ptex <br> https://github.com/wdas/ptex        | 2.0         | ptex viewers        |
+| Zlib <br> http://www.zlib.net                 |             | (required for Ptex under windows)|
+| Docutils <br> http://docutils.sourceforge.net |             | documents           |
+| Doxygen <br>http://www.doxygen.org            |             | documents           |
 
 
-## Quickstart
+## Build example to run glViewer and other example programs with minimal dependency
 
-Basic instructions to get started with the code.
+### All platforms:
 
-### Dependencies
+  * Install cmake, GLFW and GLEW (GLEW is not required on OSX)
 
-Cmake will adapt the build based on which dependencies have been successfully discovered and will disable certain features and code examples that are being built accordingly.
+   make sure GLEW and GLFW install directories configured as follows:
 
-Please refer to the documentation of each of the dependency packages for specific build and installation instructions.
+```
+   ${GLEW_LOCATION}/include/GL/glew.h
+   ${GLEW_LOCATION}/lib/libGLEW.a (linux)
+   ${GLEW_LOCATION}/lib/glew32.lib (windows)
 
-Required:
-* [cmake](http://www.cmake.org/cmake/resources/software.html)
-* [GLEW](http://sourceforge.net/projects/glew/) (for now)
+   ${GLFW_LOCATION}/include/glfw3.h
+   ${GLFW_LOCATION}/lib/libglfw3.a (linux)
+   ${GLFW_LOCATION}/lib/glfw3.lib (windows)
+```
 
-Optional:
-* [CUDA](http://developer.nvidia.com/category/zone/cuda-zone)
-* [OpenCL](http://www.khronos.org/opencl/)
-* [GLUT](http://freeglut.sourceforge.net/)
-* [Ptex](https://github.com/wdas/ptex)
-* [Zlib](http://www.zlib.net) (required for Ptex under Windows)
-* [Maya SDK](http://www.autodesk.com/maya/) (sample code for Maya viewport 2.0 primitive)
+  * Clone OpenSubdiv repository, and create a build directory.
+```
+   git clone https://github.com/PixarAnimationStudios/OpenSubdiv
+   mkdir build
+   cd build
+```
+
+### Windows (Visual Studio)
+
+  * run cmake:
+```
+"c:/Program Files (x86)/CMake/bin/cmake.exe" ^
+    -G "Visual Studio 12 Win64" ^
+    -D NO_MAYA=1 -D NO_PTEX=1 -D NO_DOC=1 ^
+    -D NO_OMP=1 -D NO_TBB=1 -D NO_CUDA=1 -D NO_OPENCL=1 -D NO_CLEW=1 ^
+    -D "GLEW_LOCATION=*YOUR GLEW INSTALL LOCATION*" ^
+    -D "GLFW_LOCATION=*YOUR GLFW INSTALL LOCATION*" ^
+    ..
+```
+  * Open OpenSubdiv.sln in VisualStudio and build.
+
+### Linux
+
+```
+cmake -D NO_MAYA=1 -D NO_PTEX=1 -D NO_DOC=1 \
+      -D NO_OMP=1 -D NO_TBB=1 -D NO_CUDA=1 -D NO_OPENCL=1 -D NO_CLEW=1 \
+      -D GLEW_LOCATION="*YOUR GLEW INSTALL LOCATION*" \
+      -D GLFW_LOCATION="*YOUR GLFW INSTALL LOCATION*" \
+      ..
+make
+```
+
+### OSX
+
+```
+cmake -D NO_MAYA=1 -D NO_PTEX=1 -D NO_DOC=1 \
+      -D NO_OMP=1 -D NO_TBB=1 -D NO_CUDA=1 -D NO_OPENCL=1 -D NO_CLEW=1 \
+      -D GLFW_LOCATION="*YOUR GLFW INSTALL LOCATION*" \
+      ..
+make
+```
 
 ### Useful cmake options and environment variables
 
 ````
 -DCMAKE_BUILD_TYPE=[Debug|Release]
--DCUDA_TOOLKIT_ROOT_DIR=[path to CUDA]
+
+-DCMAKE_INSTALL_PREFIX=[base path to install OpenSubdiv]
+-DCMAKE_LIBDIR_BASE=[library directory basename (default: lib)]
+
+-DCUDA_TOOLKIT_ROOT_DIR=[path to CUDA Toolkit]
 -DPTEX_LOCATION=[path to Ptex]
 -DGLEW_LOCATION=[path to GLEW]
--DGLUT_LOCATION=[path to GLUT]
+-DGLFW_LOCATION=[path to GLFW]
 -DMAYA_LOCATION=[path to Maya]
+
+-DNO_LIB=1        // disable the opensubdiv libs build (caveat emptor)
+-DNO_EXAMPLES=1   // disable examples build
+-DNO_TUTORIALS=1  // disable tutorials build
+-DNO_REGRESSION=1 // disable regression tests build
+-DNO_MAYA=1       // disable Maya plugin build
+-DNO_PTEX=1       // disable PTex support
+-DNO_DOC=1        // disable documentation build
+-DNO_OMP=1        // disable OpenMP
+-DNO_TBB=1        // disable TBB
+-DNO_CUDA=1       // disable CUDA
+-DNO_OPENCL=1     // disable OpenCL
+-DNO_OPENGL=1     // disable OpenGL
+-DNO_CLEW=1       // disable CLEW wrapper library
 ````
 
-The paths to Maya, Ptex, GLUT, and GLEW can also be specified through the
-following environment variables: `MAYA_LOCATION`, `PTEX_LOCATION`, `GLUT_LOCATION`,
-and `GLEW_LOCATION`.
-
-
-### Build instructions for linux:
-
-__Clone the repository:__
-
-````
-git clone git://github.com/PixarAnimationStudios/OpenSubdiv.git
-````
-
-__Generate Makefiles:__
-
-````
-cd OpenSubdiv
-mkdir build
-cd build
-cmake ..
-````
-
-__Build the project:__
-
-````
-make
-````
-### Build instructions for windows:
-
-
-__Clone the repository:__
-
-In the GitShell CLI :
-
-````
-git clone git://github.com/PixarAnimationStudios/OpenSubdiv.git
-````
-__Generate a VC++ Solution:__
-
-* Run cmake's GUI tool
-* Set the source and build directories
-* Add the location of the optional packages as variable entries
-* Click 'configure' and then 'generate'
-
-### Standalone viewer
-
-__To run viewer:__
-
-````
-bin/viewer
-````
-
-__Usage:__
-
-````
-Left mouse button drag   : orbit camera
-Middle mouse button drag : dolly camera
-Right mouse button       : show popup menu
-n, p                     : next/prev model
-1, 2, 3, 4, 5, 6, 7      : specify subdivision level
-w                        : switch display mode
-q                        : quit
-````
-
-## Wish List
-
-There are many things we'd love to do to improve support for subdivs but don't have the resources to. We hope folks feel welcome to contribute if they have the interest and time. Some things that could be improved:
-
-  * The reference maya plugin doesn't integrate with Maya shading.  That would be cool.
-  * John Lasseter loves looking at film assets in progress on an iPad. If anyone were to get this working on iOS he'd be looking at your code, and the apple geeks in all of us would smile.
-  * Alembic support would be wonderful, but we don't use Alembic enough internally to do the work.
-  * The precomputation step with hbr can be slow. Does anyone have thoughts on higher performance with topology rich data structures needed for feature adaptive subdivision? Maybe a class that packs adjacency into blocks of indices efficiently, or supports multithreading ?

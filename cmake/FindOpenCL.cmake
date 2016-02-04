@@ -1,65 +1,32 @@
 #
-#     Copyright (C) Pixar. All rights reserved.
+#   Copyright 2013 Pixar
 #
-#     This license governs use of the accompanying software. If you
-#     use the software, you accept this license. If you do not accept
-#     the license, do not use the software.
+#   Licensed under the Apache License, Version 2.0 (the "Apache License")
+#   with the following modification; you may not use this file except in
+#   compliance with the Apache License and the following modification to it:
+#   Section 6. Trademarks. is deleted and replaced with:
 #
-#     1. Definitions
-#     The terms "reproduce," "reproduction," "derivative works," and
-#     "distribution" have the same meaning here as under U.S.
-#     copyright law.  A "contribution" is the original software, or
-#     any additions or changes to the software.
-#     A "contributor" is any person or entity that distributes its
-#     contribution under this license.
-#     "Licensed patents" are a contributor's patent claims that read
-#     directly on its contribution.
+#   6. Trademarks. This License does not grant permission to use the trade
+#      names, trademarks, service marks, or product names of the Licensor
+#      and its affiliates, except as required to comply with Section 4(c) of
+#      the License and to reproduce the content of the NOTICE file.
 #
-#     2. Grant of Rights
-#     (A) Copyright Grant- Subject to the terms of this license,
-#     including the license conditions and limitations in section 3,
-#     each contributor grants you a non-exclusive, worldwide,
-#     royalty-free copyright license to reproduce its contribution,
-#     prepare derivative works of its contribution, and distribute
-#     its contribution or any derivative works that you create.
-#     (B) Patent Grant- Subject to the terms of this license,
-#     including the license conditions and limitations in section 3,
-#     each contributor grants you a non-exclusive, worldwide,
-#     royalty-free license under its licensed patents to make, have
-#     made, use, sell, offer for sale, import, and/or otherwise
-#     dispose of its contribution in the software or derivative works
-#     of the contribution in the software.
+#   You may obtain a copy of the Apache License at
 #
-#     3. Conditions and Limitations
-#     (A) No Trademark License- This license does not grant you
-#     rights to use any contributor's name, logo, or trademarks.
-#     (B) If you bring a patent claim against any contributor over
-#     patents that you claim are infringed by the software, your
-#     patent license from such contributor to the software ends
-#     automatically.
-#     (C) If you distribute any portion of the software, you must
-#     retain all copyright, patent, trademark, and attribution
-#     notices that are present in the software.
-#     (D) If you distribute any portion of the software in source
-#     code form, you may do so only under this license by including a
-#     complete copy of this license with your distribution. If you
-#     distribute any portion of the software in compiled or object
-#     code form, you may only do so under a license that complies
-#     with this license.
-#     (E) The software is licensed "as-is." You bear the risk of
-#     using it. The contributors give no express warranties,
-#     guarantees or conditions. You may have additional consumer
-#     rights under your local laws which this license cannot change.
-#     To the extent permitted under your local laws, the contributors
-#     exclude the implied warranties of merchantability, fitness for
-#     a particular purpose and non-infringement.
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the Apache License with the above modification is
+#   distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+#   KIND, either express or implied. See the Apache License for the specific
+#   language governing permissions and limitations under the Apache License.
 #
 
 # - Try to find an OpenCL library
 # Once done this will define
 #
 #  OPENCL_FOUND - System has OPENCL
-#  OPENCL_INCLUDE_DIR - The OPENCL include directory
+#  OPENCL_INCLUDE_DIRS - The OPENCL include directory
 #  OPENCL_LIBRARIES - The libraries needed to use OPENCL
 
 
@@ -97,18 +64,15 @@ elseif (WIN32)
             CL/cl.hpp
     )
 
-    if( ${CMAKE_SYSTEM_PROCESSOR} STREQUAL "AMD64" )
-        set(OPENCL_LIB_DIR "$ENV{ATISTREAMSDKROOT}/lib/x86_64")
-    else()
-        set(OPENCL_LIB_DIR "$ENV{ATISTREAMSDKROOT}/lib/x86")
-    endif()
-
     find_library( OPENCL_LIBRARIES
         NAMES
             OpenCL.lib
         PATHS
-            ${OPENCL_LIB_DIR}
             ENV OpenCL_LIBPATH
+            "$ENV{ATISTREAMSDKROOT}/lib/x86_64"
+            "$ENV{ATISTREAMSDKROOT}/lib/x86"
+            "C:/Program Files (x86)/Intel/OpenCL SDK/2.0/lib/x64"
+            "C:/Program Files (x86)/Intel/OpenCL SDK/2.0/lib/x86"
     )
 
     get_filename_component( _OPENCL_INC_CAND ${OPENCL_LIB_DIR}/../../include ABSOLUTE )
@@ -128,6 +92,39 @@ elseif (WIN32)
             "${_OPENCL_INC_CAND}"
             ENV OpenCL_INCPATH
     )
+
+    # AMD APP SDK
+    find_file(_OPENCL_DX_INTEROP_CL_D3D11_H
+        NAMES
+            CL/cl_d3d11.h
+        PATHS
+            "${_OPENCL_INC_CAND}"
+            "${OPENCL_INCLUDE_DIRS}"
+            ENV OpenCL_INCPATH
+    )
+    if (_OPENCL_DX_INTEROP_CL_D3D11_H)
+        set(OPENCL_CL_D3D11_H_FOUND "YES")
+        message("OpenCL DX11 interop found ${_OPENCL_DX_INTEROP_CL_D3D11_H}")
+    endif()
+
+    # NVIDIA GPU Computing ToolKit
+    find_file(_OPENCL_DX_INTEROP_CL_D3D11_EXT_H
+        NAMES
+            CL/cl_d3d11_ext.h
+        PATHS
+            "${_OPENCL_INC_CAND}"
+            "${OPENCL_INCLUDE_DIRS}"
+            ENV OpenCL_INCPATH
+    )
+
+    if (_OPENCL_DX_INTEROP_CL_D3D11_EXT_H)
+        set(OPENCL_CL_D3D11_EXT_H_FOUND "YES")
+        message("OpenCL DX11 interop found ${_OPENCL_DX_INTEROP_CL_D3D11_EXT_H}")
+    endif()
+
+    if (NOT _OPENCL_DX_INTEROP_CL_D3D11_H AND NOT _OPENCL_DX_INTEROP_CL_D3D11_EXT_H)
+        message("OpenCL DX11 interop not found")
+    endif()
 
 elseif (UNIX)
 
@@ -141,13 +138,13 @@ elseif (UNIX)
 
     get_filename_component( OPENCL_LIB_DIR ${OPENCL_LIBRARIES} PATH )
 
-    get_filename_component( _OPENCL_INC_CAND ${OPENCL_LIB_DIR}/../../include ABSOLUTE )
+    get_filename_component( _OPENCL_INC_CAND "${OPENCL_LIB_DIR}/../../include" ABSOLUTE )
 
     find_path( OPENCL_INCLUDE_DIRS
         NAMES
             CL/cl.h
         PATHS
-            ${_OPENCL_INC_CAND}
+            "${_OPENCL_INC_CAND}"
             "/usr/local/cuda/include"
             "/opt/AMDAPP/include"
             ENV OpenCL_INCPATH
@@ -157,7 +154,7 @@ elseif (UNIX)
         NAMES
             CL/cl.hpp
         PATHS
-            ${_OPENCL_INC_CAND}
+            "${_OPENCL_INC_CAND}"
             "/usr/local/cuda/include"
             "/opt/AMDAPP/include"
             ENV OpenCL_INCPATH
@@ -169,7 +166,6 @@ else ()
 
 endif ()
 
-find_package_handle_standard_args(OpenCL DEFAULT_MSG OPENCL_LIBRARIES OPENCL_INCLUDE_DIRS)
 
 if(_OPENCL_CPP_INCLUDE_DIRS)
 
@@ -178,7 +174,39 @@ if(_OPENCL_CPP_INCLUDE_DIRS)
     list( APPEND OPENCL_INCLUDE_DIRS ${_OPENCL_CPP_INCLUDE_DIRS} )
 
     list( REMOVE_DUPLICATES OPENCL_INCLUDE_DIRS )
+    
+    if(EXISTS "${OPENCL_INCLUDE_DIRS}/CL/cl.h")
+    
+        file(STRINGS "${OPENCL_INCLUDE_DIRS}/CL/cl.h" LINES REGEX "^#define CL_VERSION_.*$")
+
+        foreach(LINE ${LINES})
+        
+            string(REGEX MATCHALL "[0-9]+" VERSION ${LINE})
+            
+            #string(SUBSTRING ${VERSION} 1 2 FOO)
+            
+            list(GET VERSION 0 MAJOR)
+            list(GET VERSION 1 MINOR)
+            set(VERSION ${MAJOR}.${MINOR})
+            
+            if (NOT OPENCL_VERSION OR OPENCL_VERSION VERSION_LESS ${VERSION})
+                 set(OPENCL_VERSION ${VERSION})
+            endif()
+
+        endforeach()
+                   
+    endif()
 
 endif(_OPENCL_CPP_INCLUDE_DIRS)
+
+include(FindPackageHandleStandardArgs)
+
+find_package_handle_standard_args(OpenCL 
+    REQUIRED_VARS
+        OPENCL_LIBRARIES 
+        OPENCL_INCLUDE_DIRS
+    VERSION_VAR
+        OPENCL_VERSION
+)
 
 mark_as_advanced( OPENCL_INCLUDE_DIRS )

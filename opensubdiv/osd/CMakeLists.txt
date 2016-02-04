@@ -1,265 +1,355 @@
 #
-#     Copyright (C) Pixar. All rights reserved.
+#   Copyright 2013 Pixar
 #
-#     This license governs use of the accompanying software. If you
-#     use the software, you accept this license. If you do not accept
-#     the license, do not use the software.
+#   Licensed under the Apache License, Version 2.0 (the "Apache License")
+#   with the following modification; you may not use this file except in
+#   compliance with the Apache License and the following modification to it:
+#   Section 6. Trademarks. is deleted and replaced with:
 #
-#     1. Definitions
-#     The terms "reproduce," "reproduction," "derivative works," and
-#     "distribution" have the same meaning here as under U.S.
-#     copyright law.  A "contribution" is the original software, or
-#     any additions or changes to the software.
-#     A "contributor" is any person or entity that distributes its
-#     contribution under this license.
-#     "Licensed patents" are a contributor's patent claims that read
-#     directly on its contribution.
+#   6. Trademarks. This License does not grant permission to use the trade
+#      names, trademarks, service marks, or product names of the Licensor
+#      and its affiliates, except as required to comply with Section 4(c) of
+#      the License and to reproduce the content of the NOTICE file.
 #
-#     2. Grant of Rights
-#     (A) Copyright Grant- Subject to the terms of this license,
-#     including the license conditions and limitations in section 3,
-#     each contributor grants you a non-exclusive, worldwide,
-#     royalty-free copyright license to reproduce its contribution,
-#     prepare derivative works of its contribution, and distribute
-#     its contribution or any derivative works that you create.
-#     (B) Patent Grant- Subject to the terms of this license,
-#     including the license conditions and limitations in section 3,
-#     each contributor grants you a non-exclusive, worldwide,
-#     royalty-free license under its licensed patents to make, have
-#     made, use, sell, offer for sale, import, and/or otherwise
-#     dispose of its contribution in the software or derivative works
-#     of the contribution in the software.
+#   You may obtain a copy of the Apache License at
 #
-#     3. Conditions and Limitations
-#     (A) No Trademark License- This license does not grant you
-#     rights to use any contributor's name, logo, or trademarks.
-#     (B) If you bring a patent claim against any contributor over
-#     patents that you claim are infringed by the software, your
-#     patent license from such contributor to the software ends
-#     automatically.
-#     (C) If you distribute any portion of the software, you must
-#     retain all copyright, patent, trademark, and attribution
-#     notices that are present in the software.
-#     (D) If you distribute any portion of the software in source
-#     code form, you may do so only under this license by including a
-#     complete copy of this license with your distribution. If you
-#     distribute any portion of the software in compiled or object
-#     code form, you may only do so under a license that complies
-#     with this license.
-#     (E) The software is licensed "as-is." You bear the risk of
-#     using it. The contributors give no express warranties,
-#     guarantees or conditions. You may have additional consumer
-#     rights under your local laws which this license cannot change.
-#     To the extent permitted under your local laws, the contributors
-#     exclude the implied warranties of merchantability, fitness for
-#     a particular purpose and non-infringement.
+#       http://www.apache.org/licenses/LICENSE-2.0
 #
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the Apache License with the above modification is
+#   distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+#   KIND, either express or implied. See the Apache License for the specific
+#   language governing permissions and limitations under the Apache License.
 #
 
 #-------------------------------------------------------------------------------
-include_directories(
-    ${OPENGL_INCLUDE_DIR}
-    ${GLEW_INCLUDE_DIR}
-    ${PROJECT_SOURCE_DIR}/opensubdiv
-)
 
 #-------------------------------------------------------------------------------
 # source & headers
-set(SOURCE_FILES
-    cpuDispatcher.cpp
+set(CPU_SOURCE_FILES
+    cpuEvaluator.cpp
     cpuKernel.cpp
-    elementArrayBuffer.cpp
-    kernelDispatcher.cpp
-    mesh.cpp
-    ptexCoordinatesTextureBuffer.cpp
-    vertexBuffer.cpp
+    cpuPatchTable.cpp
+    cpuVertexBuffer.cpp
 )
 
-set(KERNEL_FILES
-)
+set(GPU_SOURCE_FILES )
 
-set(INC_FILES
-)
+set(INC_FILES )
 
 set(PRIVATE_HEADER_FILES
-    local.h
-    mutex.h
+    cpuKernel.h
 )
 
 set(PUBLIC_HEADER_FILES
-    cpuDispatcher.h
-    cpuKernel.h
-    elementArrayBuffer.h
-    kernelDispatcher.h
+    bufferDescriptor.h
+    cpuEvaluator.h
+    cpuPatchTable.h
+    cpuVertexBuffer.h
     mesh.h
-    ptexCoordinatesTextureBuffer.h
-    vertex.h
-    vertexBuffer.h
+    nonCopyable.h
+    opengl.h
+    types.h
 )
 
+set(DOXY_HEADER_FILES ${PUBLIC_HEADER_FILES})
+
 #-------------------------------------------------------------------------------
-# platform dependent tweaks
-if(APPLE)
-    set(PLATFORM_COMPILE_FLAGS
-        -fPIC
-    )
-elseif(UNIX)
-    set(PLATFORM_COMPILE_FLAGS
-        -fPIC
-    )
-elseif(WIN32)
-
-endif()
-
-add_definitions(
-    ${PLATFORM_COMPILE_FLAGS}
+set(OPENMP_PUBLIC_HEADERS
+    ompEvaluator.h
+    ompKernel.h
 )
 
-#-------------------------------------------------------------------------------
-if( PTEX_FOUND )
-    list(APPEND SOURCE_FILES
-        pTexture.cpp
+if(OPENMP_FOUND )
+    list(APPEND CPU_SOURCE_FILES
+        ompEvaluator.cpp
+        ompKernel.cpp
     )
-    list(APPEND PUBLIC_HEADER_FILES
-        pTexture.h
-    )
-    include_directories( ${PTEX_INCLUDE_DIR} )
-    list(APPEND PLATFORM_LIBRARIES
-        ${PTEX_LIBRARY}
-    )
-endif()
 
-#-------------------------------------------------------------------------------
-if( OPENMP_FOUND )
+    list(APPEND PUBLIC_HEADER_FILES ${OPENMP_PUBLIC_HEADERS})
+
     if (CMAKE_COMPILER_IS_GNUCXX)
-        list(APPEND PLATFORM_LIBRARIES
-            gomp
-        )
+        list(APPEND PLATFORM_CPU_LIBRARIES gomp)
     endif()
 endif()
+
+list(APPEND DOXY_HEADER_FILES ${OPENMP_PUBLIC_HEADERS})
+
+#-------------------------------------------------------------------------------
+set(TBB_PUBLIC_HEADERS
+    tbbEvaluator.h
+    tbbKernel.h
+)
+
+if( TBB_FOUND )
+    include_directories("${TBB_INCLUDE_DIR}")
+
+    list(APPEND CPU_SOURCE_FILES
+        tbbEvaluator.cpp
+        tbbKernel.cpp
+    )
+
+    list(APPEND PUBLIC_HEADER_FILES ${TBB_PUBLIC_HEADERS})
+
+    if (CMAKE_COMPILER_IS_GNUCXX)
+        list(APPEND PLATFORM_CPU_LIBRARIES gomp)
+    endif()
+
+    list(APPEND PLATFORM_CPU_LIBRARIES
+        ${TBB_LIBRARIES}
+    )
+endif()
+
+list(APPEND DOXY_HEADER_FILES ${TBB_PUBLIC_HEADERS})
 
 #-------------------------------------------------------------------------------
 # GL code & dependencies
-# note : (GLSL compute kernels require GL 4.2, which excludes APPLE)
-if( OPENGL_FOUND AND GLEW_FOUND AND (NOT APPLE) )
-    list(APPEND SOURCE_FILES
-        glslDispatcher.cpp
+set(GL_PUBLIC_HEADERS
+    cpuGLVertexBuffer.h
+    glLegacyGregoryPatchTable.h
+    glPatchTable.h
+    glVertexBuffer.h
+    glMesh.h
+    glslPatchShaderSource.h
+)
+
+if( OPENGL_FOUND OR OPENGLES_FOUND )
+    list(APPEND GPU_SOURCE_FILES
+        cpuGLVertexBuffer.cpp
+        glLegacyGregoryPatchTable.cpp
+        glPatchTable.cpp
+        glVertexBuffer.cpp
+        glslPatchShaderSource.cpp
     )
-    list(APPEND PUBLIC_HEADER_FILES
-        glslDispatcher.h
+    list(APPEND PUBLIC_HEADER_FILES ${GL_PUBLIC_HEADERS})
+    if ( OPENGL_FOUND )
+        list(APPEND KERNEL_FILES
+            glslPatchCommon.glsl
+            glslPatchBSpline.glsl
+            glslPatchGregory.glsl
+            glslPatchGregoryBasis.glsl
+        )
+    endif()
+endif()
+
+list(APPEND DOXY_HEADER_FILES ${GL_PUBLIC_HEADERS})
+
+#-------------------------------------------------------------------------------
+# OpenGL 4.2 dependencies
+# note : (GLSL transform feedback kernels require GL 4.2)
+set(GL_4_2_PUBLIC_HEADERS
+    glXFBEvaluator.h
+)
+
+if( OPENGL_4_2_FOUND )
+    list(APPEND GPU_SOURCE_FILES
+        glXFBEvaluator.cpp
     )
+    list(APPEND PUBLIC_HEADER_FILES ${GL_4_2_PUBLIC_HEADERS})
     list(APPEND KERNEL_FILES
-        glslKernel.glsl
+        glslXFBKernel.glsl
     )
-    list(APPEND PLATFORM_LIBRARIES
-        ${OPENGL_LIBRARY}
+    list(APPEND PLATFORM_GPU_LIBRARIES
         ${GLEW_LIBRARY}
     )
-else( OPENGL_FOUND AND APPLE )
-    list(APPEND PLATFORM_LIBRARIES
-        ${OPENGL_LIBRARY}
+endif()
+
+list(APPEND DOXY_HEADER_FILES ${GL_4_2_PUBLIC_HEADERS})
+
+
+#-------------------------------------------------------------------------------
+# OpenGL 4.3 dependencies
+# note : (GLSL compute shader kernels require GL 4.3)
+set(GL_4_3_PUBLIC_HEADERS
+    glComputeEvaluator.h
+)
+
+if( OPENGL_4_3_FOUND )
+    list(APPEND GPU_SOURCE_FILES
+        glComputeEvaluator.cpp
+    )
+    list(APPEND PUBLIC_HEADER_FILES ${GL_4_3_PUBLIC_HEADERS})
+    list(APPEND KERNEL_FILES
+        glslComputeKernel.glsl
+    )
+    list(APPEND PLATFORM_GPU_LIBRARIES
+        ${GLEW_LIBRARY}
     )
 endif()
+
+list(APPEND DOXY_HEADER_FILES ${GL_4_3_PUBLIC_HEADERS})
+
+#-------------------------------------------------------------------------------
+# DX11 code & dependencies
+set(DXSDK_PUBLIC_HEADERS
+    cpuD3D11VertexBuffer.h
+    d3d11ComputeEvaluator.h
+    d3d11LegacyGregoryPatchTable.h
+    d3d11PatchTable.h
+    d3d11VertexBuffer.h
+    d3d11Mesh.h
+    hlslPatchShaderSource.h
+)
+if( DXSDK_FOUND )
+    list(APPEND GPU_SOURCE_FILES
+        cpuD3D11VertexBuffer.cpp
+        d3d11ComputeEvaluator.cpp
+        d3d11LegacyGregoryPatchTable.cpp
+        d3d11PatchTable.cpp
+        d3d11VertexBuffer.cpp
+        hlslPatchShaderSource.cpp
+    )
+    list(APPEND PUBLIC_HEADER_FILES ${DXSDK_PUBLIC_HEADERS})
+    list(APPEND KERNEL_FILES
+        hlslComputeKernel.hlsl
+        hlslPatchCommon.hlsl
+        hlslPatchBSpline.hlsl
+        hlslPatchGregory.hlsl
+        hlslPatchGregoryBasis.hlsl
+    )
+    list(APPEND PLATFORM_GPU_LIBRARIES
+        ${DXSDK_LIBRARIES}
+    )
+endif()
+
+list(APPEND DOXY_HEADER_FILES ${DXSDK_PUBLIC_HEADERS})
 
 #-------------------------------------------------------------------------------
 # OpenCL code & dependencies
+set(OPENCL_PUBLIC_HEADERS
+    clEvaluator.h
+    clPatchTable.h
+    clVertexBuffer.h
+    opencl.h
+)
+
 if ( OPENCL_FOUND )
-    list(APPEND SOURCE_FILES
-        clDispatcher.cpp
+    list(APPEND GPU_SOURCE_FILES
+        clEvaluator.cpp
+        clPatchTable.cpp
+        clVertexBuffer.cpp
     )
-    list(APPEND PUBLIC_HEADER_FILES
-        clDispatcher.h
-    )
+    list(APPEND PUBLIC_HEADER_FILES ${OPENCL_PUBLIC_HEADERS})
     list(APPEND KERNEL_FILES
         clKernel.cl
     )
-    list(APPEND PLATFORM_LIBRARIES
+    list(APPEND PLATFORM_GPU_LIBRARIES
         ${OPENCL_LIBRARIES}
     )
+    include_directories( "${OPENCL_INCLUDE_DIRS}" )
+    if ( OPENGL_FOUND )
+        list(APPEND GPU_SOURCE_FILES clGLVertexBuffer.cpp)
+        list(APPEND PUBLIC_HEADER_FILES clGLVertexBuffer.h)
+    endif()
+
+    if ( OPENCL_D3D11_INTEROP_FOUND )
+        list(APPEND GPU_SOURCE_FILES
+             clD3D11VertexBuffer.cpp
+        )
+        list(APPEND PUBLIC_HEADER_FILES
+             clD3D11VertexBuffer.h
+        )
+    endif()
 endif()
+
+list(APPEND DOXY_HEADER_FILES ${OPENCL_PUBLIC_HEADERS})
 
 #-------------------------------------------------------------------------------
 # CUDA code & dependencies
+set(CUDA_PUBLIC_HEADERS
+    cudaEvaluator.h
+    cudaPatchTable.h
+    cudaVertexBuffer.h
+)
+
 if( CUDA_FOUND )
-    list(APPEND SOURCE_FILES
-        cudaDispatcher.cpp
+    list(APPEND GPU_SOURCE_FILES
+        cudaEvaluator.cpp
+        cudaPatchTable.cpp
+        cudaVertexBuffer.cpp
     )
-    list(APPEND PUBLIC_HEADER_FILES
-        cudaDispatcher.h
+    list(APPEND PUBLIC_HEADER_FILES ${CUDA_PUBLIC_HEADERS})
+    list(APPEND CUDA_KERNEL_FILES
+        osd/cudaKernel.cu
     )
-    list(APPEND KERNEL_FILES
-        cudaKernel.cu
-    )
+    set (CUDA_KERNEL_FILES ${CUDA_KERNEL_FILES} PARENT_SCOPE)
+    if ( OPENGL_FOUND )
+        list(APPEND GPU_SOURCE_FILES
+            cudaGLVertexBuffer.cpp
+        )
+        list(APPEND PUBLIC_HEADER_FILES
+            cudaGLVertexBuffer.h
+        )
+    endif()
+
+    if( DXSDK_FOUND )
+        list(APPEND GPU_SOURCE_FILES
+            cudaD3D11VertexBuffer.cpp
+        )
+        list(APPEND PUBLIC_HEADER_FILES
+            cudaD3D11VertexBuffer.h
+        )
+    endif()
+
     if (UNIX)
-        list( APPEND CUDA_NVCC_FLAGS -Xcompiler -fPIC )
+        list( APPEND CUDA_NVCC_FLAGS -Xcompiler -fPIC --gpu-architecture compute_11 )
     endif()
 endif()
 
+list(APPEND DOXY_HEADER_FILES ${CUDA_PUBLIC_HEADERS})
 
 #-------------------------------------------------------------------------------
-# Kernel Stringification
-# We want to use preprocessor include directives to include GLSL and OpenCL
-# kernel source files in cpp files, but since the sources contain newline
-# characters we would need raw string literals from C++11 to do this directly.
-# To avoid depending on C++11 we instead use a small tool called "line_quote"
-# to generate source files that are suitable for direct inclusion.
-foreach(kernel_file ${KERNEL_FILES})
 
-    string(REGEX REPLACE ".*[.](.*)" "\\1" extension ${kernel_file})
+_stringify("${KERNEL_FILES}" INC_FILES)
 
-    if(NOT ${extension} STREQUAL "cu")
-
-        string(REGEX REPLACE "(.*)[.].*" "\\1.inc" inc_file ${kernel_file})
-        list(APPEND INC_FILES ${inc_file})
-
-        add_custom_command(
-            OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/${inc_file}
-            COMMAND stringify ${CMAKE_CURRENT_SOURCE_DIR}/${kernel_file}
-                ${CMAKE_CURRENT_SOURCE_DIR}/${inc_file}
-            DEPENDS stringify ${CMAKE_CURRENT_SOURCE_DIR}/${kernel_file}
-        )
-
-    endif()
-endforeach()
+include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
 #-------------------------------------------------------------------------------
 source_group("Kernels" FILES ${KERNEL_FILES})
 
 source_group("Inc" FILES ${INC_FILES})
 
-_add_possibly_cuda_library(osd_static STATIC
-    ${SOURCE_FILES}
-    ${PRIVATE_HEADER_FILES}
-    ${PUBLIC_HEADER_FILES}
-    ${KERNEL_FILES}
-    ${INC_FILES}
-)
-set_target_properties(osd_static PROPERTIES OUTPUT_NAME osd CLEAN_DIRECT_OUTPUT 1)
-
-target_link_libraries(osd_static
-    ${PLATFORM_LIBRARIES}
-)
-
-if (NOT WIN32)
-    _add_possibly_cuda_library(osd_dynamic SHARED
-        ${SOURCE_FILES}
+# Compile objs first for both the CPU and GPU libs -----
+add_library(osd_cpu_obj
+    OBJECT
+        ${CPU_SOURCE_FILES}
         ${PRIVATE_HEADER_FILES}
         ${PUBLIC_HEADER_FILES}
-        ${KERNEL_FILES}
-        ${INC_FILES}
+)
+
+if( GPU_SOURCE_FILES ) 
+    add_library(osd_gpu_obj
+        OBJECT
+            ${GPU_SOURCE_FILES}
+            ${PRIVATE_HEADER_FILES}
+            ${PUBLIC_HEADER_FILES}
+            ${INC_FILES}
     )
-
-    set_target_properties(osd_dynamic PROPERTIES OUTPUT_NAME osd CLEAN_DIRECT_OUTPUT 1)
-
-    target_link_libraries(osd_dynamic
-        ${PLATFORM_LIBRARIES}
-    )
-
 endif()
 
+_add_doxy_headers( "${DOXY_HEADER_FILES}" )
 
-install( FILES ${PUBLIC_HEADER_FILES}
-         DESTINATION include/osd
-         PERMISSIONS OWNER_READ GROUP_READ WORLD_READ )
+install(
+    FILES
+        ${PUBLIC_HEADER_FILES}
+    DESTINATION
+        "${CMAKE_INCDIR_BASE}/osd"
+    PERMISSIONS
+        OWNER_READ
+        GROUP_READ
+        WORLD_READ )
+
+
+if (ANDROID)
+    install(
+        FILES
+            Android.mk
+        DESTINATION
+            "${LIBRARY_OUTPUT_PATH_ROOT}"
+        PERMISSIONS
+            OWNER_READ
+            GROUP_READ
+            WORLD_READ )
+endif()
 
 #-------------------------------------------------------------------------------

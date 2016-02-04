@@ -1,61 +1,29 @@
 //
-//     Copyright (C) Pixar. All rights reserved.
+//   Copyright 2013 Pixar
 //
-//     This license governs use of the accompanying software. If you
-//     use the software, you accept this license. If you do not accept
-//     the license, do not use the software.
+//   Licensed under the Apache License, Version 2.0 (the "Apache License")
+//   with the following modification; you may not use this file except in
+//   compliance with the Apache License and the following modification to it:
+//   Section 6. Trademarks. is deleted and replaced with:
 //
-//     1. Definitions
-//     The terms "reproduce," "reproduction," "derivative works," and
-//     "distribution" have the same meaning here as under U.S.
-//     copyright law.  A "contribution" is the original software, or
-//     any additions or changes to the software.
-//     A "contributor" is any person or entity that distributes its
-//     contribution under this license.
-//     "Licensed patents" are a contributor's patent claims that read
-//     directly on its contribution.
+//   6. Trademarks. This License does not grant permission to use the trade
+//      names, trademarks, service marks, or product names of the Licensor
+//      and its affiliates, except as required to comply with Section 4(c) of
+//      the License and to reproduce the content of the NOTICE file.
 //
-//     2. Grant of Rights
-//     (A) Copyright Grant- Subject to the terms of this license,
-//     including the license conditions and limitations in section 3,
-//     each contributor grants you a non-exclusive, worldwide,
-//     royalty-free copyright license to reproduce its contribution,
-//     prepare derivative works of its contribution, and distribute
-//     its contribution or any derivative works that you create.
-//     (B) Patent Grant- Subject to the terms of this license,
-//     including the license conditions and limitations in section 3,
-//     each contributor grants you a non-exclusive, worldwide,
-//     royalty-free license under its licensed patents to make, have
-//     made, use, sell, offer for sale, import, and/or otherwise
-//     dispose of its contribution in the software or derivative works
-//     of the contribution in the software.
+//   You may obtain a copy of the Apache License at
 //
-//     3. Conditions and Limitations
-//     (A) No Trademark License- This license does not grant you
-//     rights to use any contributor's name, logo, or trademarks.
-//     (B) If you bring a patent claim against any contributor over
-//     patents that you claim are infringed by the software, your
-//     patent license from such contributor to the software ends
-//     automatically.
-//     (C) If you distribute any portion of the software, you must
-//     retain all copyright, patent, trademark, and attribution
-//     notices that are present in the software.
-//     (D) If you distribute any portion of the software in source
-//     code form, you may do so only under this license by including a
-//     complete copy of this license with your distribution. If you
-//     distribute any portion of the software in compiled or object
-//     code form, you may only do so under a license that complies
-//     with this license.
-//     (E) The software is licensed "as-is." You bear the risk of
-//     using it. The contributors give no express warranties,
-//     guarantees or conditions. You may have additional consumer
-//     rights under your local laws which this license cannot change.
-//     To the extent permitted under your local laws, the contributors
-//     exclude the implied warranties of merchantability, fitness for
-//     a particular purpose and non-infringement.
+//       http://www.apache.org/licenses/LICENSE-2.0
 //
-#ifndef HBRSUBDIVISION_H
-#define HBRSUBDIVISION_H
+//   Unless required by applicable law or agreed to in writing, software
+//   distributed under the Apache License with the above modification is
+//   distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+//   KIND, either express or implied. See the Apache License for the specific
+//   language governing permissions and limitations under the Apache License.
+//
+
+#ifndef OPENSUBDIV3_HBRSUBDIVISION_H
+#define OPENSUBDIV3_HBRSUBDIVISION_H
 
 #include "../version.h"
 
@@ -104,10 +72,10 @@ public:
     virtual HbrVertex<T>* Subdivide(HbrMesh<T>* mesh, HbrVertex<T>* vertex) = 0;
 
     // Returns true if the vertex is extraordinary in the subdivision scheme
-    virtual bool VertexIsExtraordinary(HbrMesh<T>* /* mesh */, HbrVertex<T>* /* vertex */) { return false; }
+    virtual bool VertexIsExtraordinary(HbrMesh<T> const * /* mesh */, HbrVertex<T>* /* vertex */) { return false; }
 
     // Returns true if the face is extraordinary in the subdivision scheme
-    virtual bool FaceIsExtraordinary(HbrMesh<T>* /* mesh */, HbrFace<T>* /* face */) { return false; }
+    virtual bool FaceIsExtraordinary(HbrMesh<T> const * /* mesh */, HbrFace<T>* /* face */) { return false; }
 
     // Crease subdivision rules. When subdividing a edge with a crease
     // strength, we get two child subedges, and we need to determine
@@ -249,24 +217,41 @@ HbrSubdivision<T>::SubdivideCreaseWeight(HbrHalfedge<T>* edge, HbrVertex<T>* ver
     else if (creaseSubdivision == HbrSubdivision<T>::k_CreaseChaikin) {
 
         float childsharp = 0.0f;
+        
+        int n = 0;
 
         // Add 1/4 of the sharpness of all crease edges incident to
         // the vertex (other than this crease edge)
-        std::vector<HbrHalfedge<T>*> edges;
-        vertex->GuaranteeNeighbors();
-        vertex->GetSurroundingEdges(std::back_inserter(edges));
+        class ChaikinEdgeCreaseOperator : public HbrHalfedgeOperator<T> {
+        public:
 
-        int n = 0;
-        for (typename std::vector<HbrHalfedge<T>*>::iterator ei = edges.begin(); ei != edges.end(); ++ei) {
-            if (*ei == edge) continue;
-            if ((*ei)->GetSharpness() > HbrHalfedge<T>::k_Smooth) {
-                childsharp += (*ei)->GetSharpness();
-                n++;
+            ChaikinEdgeCreaseOperator(
+                HbrHalfedge<T> const * edge, float & childsharp, int & count) : 
+                    m_edge(edge), m_childsharp(childsharp), m_count(count) { }
+
+            virtual void operator() (HbrHalfedge<T> &edge) {
+
+                // Skip original edge or it's opposite
+                if ((&edge==m_edge) || (&edge==m_edge->GetOpposite()))
+                    return;
+                if (edge.GetSharpness() > HbrHalfedge<T>::k_Smooth) {
+                    m_childsharp += edge.GetSharpness();
+                    ++m_count;
+                }
             }
-        }
+
+        private:
+            HbrHalfedge<T> const * m_edge;
+            float & m_childsharp;
+            int & m_count;
+        };
+
+        ChaikinEdgeCreaseOperator op(edge, childsharp, n);
+        vertex->GuaranteeNeighbors();
+        vertex->ApplyOperatorSurroundingEdges(op);
 
         if (n) {
-            childsharp = childsharp * 0.25f / n;
+            childsharp = childsharp * 0.25f / float(n);
         }
 
         // Add 3/4 of the sharpness of this crease edge
@@ -305,4 +290,4 @@ using namespace OPENSUBDIV_VERSION;
 
 } // end namespace OpenSubdiv
 
-#endif /* HBRSUBDIVISION_H */
+#endif /* OPENSUBDIV3_HBRSUBDIVISION_H */

@@ -1,65 +1,36 @@
 //
-//     Copyright (C) Pixar. All rights reserved.
+//   Copyright 2013 Pixar
 //
-//     This license governs use of the accompanying software. If you
-//     use the software, you accept this license. If you do not accept
-//     the license, do not use the software.
+//   Licensed under the Apache License, Version 2.0 (the "Apache License")
+//   with the following modification; you may not use this file except in
+//   compliance with the Apache License and the following modification to it:
+//   Section 6. Trademarks. is deleted and replaced with:
 //
-//     1. Definitions
-//     The terms "reproduce," "reproduction," "derivative works," and
-//     "distribution" have the same meaning here as under U.S.
-//     copyright law.  A "contribution" is the original software, or
-//     any additions or changes to the software.
-//     A "contributor" is any person or entity that distributes its
-//     contribution under this license.
-//     "Licensed patents" are a contributor's patent claims that read
-//     directly on its contribution.
+//   6. Trademarks. This License does not grant permission to use the trade
+//      names, trademarks, service marks, or product names of the Licensor
+//      and its affiliates, except as required to comply with Section 4(c) of
+//      the License and to reproduce the content of the NOTICE file.
 //
-//     2. Grant of Rights
-//     (A) Copyright Grant- Subject to the terms of this license,
-//     including the license conditions and limitations in section 3,
-//     each contributor grants you a non-exclusive, worldwide,
-//     royalty-free copyright license to reproduce its contribution,
-//     prepare derivative works of its contribution, and distribute
-//     its contribution or any derivative works that you create.
-//     (B) Patent Grant- Subject to the terms of this license,
-//     including the license conditions and limitations in section 3,
-//     each contributor grants you a non-exclusive, worldwide,
-//     royalty-free license under its licensed patents to make, have
-//     made, use, sell, offer for sale, import, and/or otherwise
-//     dispose of its contribution in the software or derivative works
-//     of the contribution in the software.
+//   You may obtain a copy of the Apache License at
 //
-//     3. Conditions and Limitations
-//     (A) No Trademark License- This license does not grant you
-//     rights to use any contributor's name, logo, or trademarks.
-//     (B) If you bring a patent claim against any contributor over
-//     patents that you claim are infringed by the software, your
-//     patent license from such contributor to the software ends
-//     automatically.
-//     (C) If you distribute any portion of the software, you must
-//     retain all copyright, patent, trademark, and attribution
-//     notices that are present in the software.
-//     (D) If you distribute any portion of the software in source
-//     code form, you may do so only under this license by including a
-//     complete copy of this license with your distribution. If you
-//     distribute any portion of the software in compiled or object
-//     code form, you may only do so under a license that complies
-//     with this license.
-//     (E) The software is licensed "as-is." You bear the risk of
-//     using it. The contributors give no express warranties,
-//     guarantees or conditions. You may have additional consumer
-//     rights under your local laws which this license cannot change.
-//     To the extent permitted under your local laws, the contributors
-//     exclude the implied warranties of merchantability, fitness for
-//     a particular purpose and non-infringement.
+//       http://www.apache.org/licenses/LICENSE-2.0
 //
-#ifndef HBRMESH_H
-#define HBRMESH_H
+//   Unless required by applicable law or agreed to in writing, software
+//   distributed under the Apache License with the above modification is
+//   distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+//   KIND, either express or implied. See the Apache License for the specific
+//   language governing permissions and limitations under the Apache License.
+//
+
+#ifndef OPENSUBDIV3_HBRMESH_H
+#define OPENSUBDIV3_HBRMESH_H
 
 #ifdef PRMAN
 #include "libtarget/TgMalloc.h" // only for alloca
 #include "libtarget/TgThread.h"
+#ifdef HBRSTITCH
+#include "libtarget/TgHashMap.h"
+#endif
 #endif
 
 #include <algorithm>
@@ -82,6 +53,7 @@ namespace OpenSubdiv {
 namespace OPENSUBDIV_VERSION {
 
 template <class T> class HbrSubdivision;
+template <class T> class HbrHalfedge;
 
 template <class T> class HbrMesh {
 public:
@@ -104,10 +76,37 @@ public:
     HbrVertex<T>* NewVertex();
 
     // Ask for vertex with the indicated ID
-    HbrVertex<T>* GetVertex(int id) const;
+    HbrVertex<T>* GetVertex(int id) const {
+        if (id >= nvertices) {
+            return 0;
+        } else {
+            return vertices[id];
+        }
+    }        
+
+    // Ask for client data associated with the vertex with the indicated ID
+    void* GetVertexClientData(int id) const {
+        if (id >= vertexClientData.size()) {        
+            return 0;
+        } else {
+            return vertexClientData[id];
+        }
+    }
+
+    // Set client data associated with the vertex with the indicated ID
+    void SetVertexClientData(int id, void *data) {
+        if (id >= vertexClientData.size()) {
+            size_t oldsize = vertexClientData.size();
+            vertexClientData.resize(nvertices);
+            if (s_memStatsIncrement) {
+                s_memStatsIncrement((vertexClientData.size() - oldsize) * sizeof(void*));
+            }
+        }
+        vertexClientData[id] = data;
+    }
 
     // Create face from a list of vertex IDs
-    HbrFace<T>* NewFace(int nvertices, int *vtx, int uindex);
+    HbrFace<T>* NewFace(int nvertices, const int *vtx, int uindex);
 
     // Create face from a list of vertices
     HbrFace<T>* NewFace(int nvertices, HbrVertex<T>** vtx, HbrFace<T>* parent, int childindex);
@@ -139,6 +138,27 @@ public:
     // Ask for face with the indicated ID
     HbrFace<T>* GetFace(int id) const;
 
+    // Ask for client data associated with the face with the indicated ID
+    void* GetFaceClientData(int id) const {
+        if (id >= faceClientData.size()) {        
+            return 0;
+        } else {
+            return faceClientData[id];
+        }
+    }
+
+    // Set client data associated with the face with the indicated ID
+    void SetFaceClientData(int id, void *data) {
+        if (id >= faceClientData.size()) {
+            size_t oldsize = faceClientData.size();
+            faceClientData.resize(nfaces);
+            if (s_memStatsIncrement) {
+                s_memStatsIncrement((faceClientData.size() - oldsize) * sizeof(void*));
+            }
+        }
+        faceClientData[id] = data;
+    }
+    
     // Returns a collection of all vertices in the mesh. This function
     // requires an output iterator; to get the vertices into a
     // std::vector, use GetVertices(std::back_inserter(myvector))
@@ -227,33 +247,30 @@ public:
         return hierarchicalEdits;
     }
 
+    // Return the hierarchical edits associated with the mesh at an
+    // offset
+    HbrHierarchicalEdit<T>** GetHierarchicalEditsAtOffset(int offset) {
+        return &hierarchicalEdits[offset];
+    }
+
     // Whether the mesh has certain types of edits
     bool HasVertexEdits() const { return hasVertexEdits; }
     bool HasCreaseEdits() const { return hasCreaseEdits; }
 
     void Unrefine(int numCoarseVerts, int numCoarseFaces) {
-        static int oldMaxFaceID = 0;
-        if(oldMaxFaceID == 0) {
-            oldMaxFaceID = numCoarseFaces;
-        }
+
         for (int i = numCoarseFaces; i < maxFaceID; ++i) {
-            if (faces[i]) {
-                HbrFace<T>* f = faces[i];
-                if(f && not f->IsCoarse())
+            HbrFace<T>* f = GetFace(i);
+                if(f and not f->IsCoarse())
                     DeleteFace(f);
-            }
         }
-        //oldMaxFaceID = maxFaceID;
+        
         maxFaceID = numCoarseFaces;
 
-        int vert = numCoarseVerts % vsetsize;
-        for( int set=(numCoarseVerts/vsetsize); set<nvsets; set++ ) {
-            for( ; vert<vsetsize; vert++ ) {
-                HbrVertex<T>* v = vertices[set][vert];
-                if(v && not v->IsReferenced())
-                    DeleteVertex(v);
-            }
-            vert = 0;
+        for(int i=numCoarseVerts; i<(int)vertices.size(); ++i ) {
+            HbrVertex<T>* v = GetVertex(i);
+            if(v and not v->IsReferenced())
+                DeleteVertex(v);
         }
     }
 
@@ -285,15 +302,23 @@ public:
         m_faceChildrenAllocator.Deallocate(facechildren);
     }
 
-private:
-#ifdef PRMAN
-        // This code is intended to be shared with PRman which provides its own 
-        // TgSpinLock mutex. Other clients are responsible for providing a Mutex
-        // object with public Lock() and Unlock() functions.
-        typedef TgSpinLock Mutex;
+#ifdef HBRSTITCH
+    void * GetStitchData(const HbrHalfedge<T>* edge) const {
+        typename TgHashMap<const HbrHalfedge<T>*, void *>::const_iterator i =
+            stitchData.find(edge);
+        if (i != stitchData.end()) {
+            return i->second;
+        } else {
+            return NULL;
+        }
+    }
+
+    void SetStitchData(const HbrHalfedge<T>* edge, void *data) {
+        stitchData[edge] = data;
+    }
 #endif
 
-    mutable Mutex m_mutex;
+private:
 
     // Subdivision method used in this mesh
     HbrSubdivision<T>* subdivision;
@@ -311,17 +336,26 @@ private:
     const int totalfvarwidth;
 
 #ifdef HBRSTITCH
+    // Number of stitch edges per halfedge 
     const int stitchCount;
+
+    // Client (sparse) data used on some halfedges
+    TgHashMap<const HbrHalfedge<T>*, void *> stitchData;
 #endif
 
     // Vertices which comprise this mesh
-    HbrVertex<T>*** vertices;
-    int nvsets;
-    const int vsetsize;
+    std::vector<HbrVertex<T> *> vertices;
+    int nvertices;
+
+    // Client data associated with each face
+    std::vector<void *> vertexClientData;
 
     // Faces which comprise this mesh
-    HbrFace<T>** faces;
+    std::vector<HbrFace<T> *> faces;
     int nfaces;
+
+    // Client data associated with each face
+    std::vector<void *> faceClientData;
 
     // Maximum vertex ID - may be needed when generating a unique
     // vertex ID
@@ -391,6 +425,22 @@ private:
     // Faces which are transient
     std::vector<HbrFace<T>*> m_transientFaces;
 
+#ifdef HBR_ADAPTIVE
+public:
+    std::vector<std::pair<int, int> > const & GetSplitVertices() const {
+        return m_splitVertices;
+    }
+
+protected:
+    friend class HbrVertex<T>;
+    
+    void addSplitVertex(int splitIdx, int orgIdx) {
+        m_splitVertices.push_back(std::pair<int,int>(splitIdx, orgIdx));
+    }
+    
+private:
+    std::vector<std::pair<int, int> >  m_splitVertices;
+#endif
 };
 
 } // end namespace OPENSUBDIV_VERSION
@@ -416,9 +466,7 @@ HbrMesh<T>::HbrMesh(HbrSubdivision<T>* s, int _fvarcount, const int *_fvarindice
 #ifdef HBRSTITCH
       stitchCount(_stitchCount),
 #endif
-      vertices(0), nvsets(0),
-      vsetsize(2048), faces(0), nfaces(0),
-      maxVertexID(0), maxFaceID(0), maxUniformIndex(0),
+      nvertices(0), nfaces(0), maxVertexID(0), maxFaceID(0), maxUniformIndex(0),
       interpboundarymethod(k_InterpolateBoundaryNone),
       fvarinterpboundarymethod(k_InterpolateBoundaryNone),
       fvarpropagatecorners(false),
@@ -427,13 +475,11 @@ HbrMesh<T>::HbrMesh(HbrSubdivision<T>* s, int _fvarcount, const int *_fvarindice
                  ((fvarcount + 15) / 16 * sizeof(unsigned int)
 #ifdef HBRSTITCH
                  + stitchCount * sizeof(StitchEdge*)
-                 + sizeof(void*) // for stitch data
 #endif
                   )),
       m_faceAllocator(&m_memory, 512, 0, 0, m_faceSize),
       m_vertexSize(sizeof(HbrVertex<T>) +
-                   sizeof(HbrHalfedge<T>*) + // for incidentEdges[1]
-                   totalfvarwidth * sizeof(float) + sizeof(HbrFVarData<T>)),
+          (totalfvarwidth ? (sizeof(HbrFVarData<T>) + (totalfvarwidth - 1) * sizeof(float)) : 0)),
       m_vertexAllocator(&m_memory, 512, 0, 0, m_vertexSize),
       m_faceChildrenAllocator(&m_memory, 512, 0, 0),
       m_memory(0),
@@ -448,7 +494,7 @@ HbrMesh<T>::~HbrMesh() {
     GarbageCollect();
 
     int i;
-    if (faces) {
+    if (!faces.empty()) {
         for (i = 0; i < nfaces; ++i) {
             if (faces[i]) {
                 faces[i]->Destroy();
@@ -456,28 +502,25 @@ HbrMesh<T>::~HbrMesh() {
             }
         }
         if (s_memStatsDecrement) {
-            s_memStatsDecrement(nfaces * sizeof(HbrFace<T>*));
+            s_memStatsDecrement(faces.size() * sizeof(HbrFace<T>*));
         }
-        m_memory -= nfaces * sizeof(HbrFace<T>*);
-        delete[] faces;
     }
-
-    if (nvsets) {
-        for (int vi = 0; vi < nvsets; ++vi) {
-            HbrVertex<T>** vset = vertices[vi];
-            for (i = 0; i < vsetsize; ++i) {
-                if (vset[i]) {
-                    vset[i]->Destroy();
-                    m_vertexAllocator.Deallocate(vset[i]);
-                }
+    if (!vertices.empty()) {
+        for (i = 0; i < nvertices; ++i) {
+            if (vertices[i]) {
+                vertices[i]->Destroy(this);
+                m_vertexAllocator.Deallocate(vertices[i]);
             }
-            delete[] vset;
-            if (s_memStatsDecrement) {
-                s_memStatsDecrement(vsetsize * sizeof(HbrVertex<T>*));
-            }
-            m_memory -= vsetsize * sizeof(HbrVertex<T>*);
         }
-        delete[] vertices;
+        if (s_memStatsDecrement) {
+            s_memStatsDecrement(vertices.size() * sizeof(HbrVertex<T>*));
+        }
+    }
+    if (!vertexClientData.empty() && s_memStatsDecrement) {
+        s_memStatsDecrement(vertexClientData.size() * sizeof(void*));
+    }
+    if (!faceClientData.empty() && s_memStatsDecrement) {
+        s_memStatsDecrement(faceClientData.size() * sizeof(void*));
     }
     for (typename std::vector<HbrHierarchicalEdit<T>* >::iterator hi =
              hierarchicalEdits.begin(); hi != hierarchicalEdits.end(); ++hi) {
@@ -489,40 +532,25 @@ template <class T>
 HbrVertex<T>*
 HbrMesh<T>::NewVertex(int id, const T &data) {
     HbrVertex<T>* v = 0;
-
-    int arrayindex = id / vsetsize;
-    int vertindex = id % vsetsize;
-    m_mutex.Lock();
-    HbrVertex<T>** vset = 0;
-    if (arrayindex >= nvsets) {
-        HbrVertex<T>*** nvertices = new HbrVertex<T>**[arrayindex + 1];
-        for (int i = 0; i < nvsets; ++i) {
-            nvertices[i] = vertices[i];
+    if (nvertices <= id) {
+        while (nvertices <= maxVertexID) {
+            nvertices *= 2;
+            if (nvertices < 1) nvertices = 1;
         }
-        for (int i = nvsets; i < arrayindex + 1; ++i) {
-            vset = new HbrVertex<T>*[vsetsize];
-            if (s_memStatsIncrement) {
-                s_memStatsIncrement(vsetsize * sizeof(HbrVertex<T>*));
-            }
-            m_memory += vsetsize * sizeof(HbrVertex<T>*);
-            memset(vset, 0, vsetsize * sizeof(HbrVertex<T>*));
-            nvertices[i] = vset;
+        size_t oldsize = vertices.size();
+        vertices.resize(nvertices);
+        if (s_memStatsIncrement) {
+            s_memStatsIncrement((vertices.size() - oldsize) * sizeof(HbrVertex<T>*));
         }
-        nvsets = arrayindex + 1;
-        delete[] vertices;
-        vertices = nvertices;
     }
-    vset = vertices[arrayindex];
-    m_mutex.Unlock();
-
-    v = vset[vertindex];
+    v = vertices[id];
     if (v) {
-        v->Destroy();
+        v->Destroy(this);
     } else {
         v = m_vertexAllocator.Allocate();
     }
     v->Initialize(id, data, GetTotalFVarWidth());
-    vset[vertindex] = v;
+    vertices[id] = v;
 
     if (id >= maxVertexID) {
         maxVertexID = id + 1;
@@ -575,24 +603,8 @@ HbrMesh<T>::NewVertex() {
 }
 
 template <class T>
-HbrVertex<T>*
-HbrMesh<T>::GetVertex(int id) const {
-    int arrayindex = id / vsetsize;
-    int vertindex = id % vsetsize;
-
-    m_mutex.Lock();
-    if (arrayindex >= nvsets) {
-        m_mutex.Unlock();
-        return 0;
-    }
-    HbrVertex<T>** vset = vertices[arrayindex];
-    m_mutex.Unlock();
-    return vset[vertindex];
-}
-
-template <class T>
 HbrFace<T>*
-HbrMesh<T>::NewFace(int nv, int *vtx, int uindex) {
+HbrMesh<T>::NewFace(int nv, const int *vtx, int uindex) {
     HbrVertex<T>** facevertices = reinterpret_cast<HbrVertex<T>**>(alloca(sizeof(HbrVertex<T>*) * nv));
     int i;
     for (i = 0; i < nv; ++i) {
@@ -604,31 +616,15 @@ HbrMesh<T>::NewFace(int nv, int *vtx, int uindex) {
     HbrFace<T> *f = 0;
     // Resize if needed
     if (nfaces <= maxFaceID) {
-        int nnfaces = nfaces;
-        while (nnfaces <= maxFaceID) {
-            nnfaces *= 2;
-            if (nnfaces < 1) nnfaces = 1;
+        while (nfaces <= maxFaceID) {
+            nfaces *= 2;
+            if (nfaces < 1) nfaces = 1;
         }
-        HbrFace<T>** newfaces = new HbrFace<T>*[nnfaces];
+        size_t oldsize = faces.size();
+        faces.resize(nfaces);
         if (s_memStatsIncrement) {
-            s_memStatsIncrement(nnfaces * sizeof(HbrFace<T>*));
+            s_memStatsIncrement((faces.size() - oldsize) * sizeof(HbrVertex<T>*));
         }
-        m_memory += nnfaces * sizeof(HbrFace<T>*);
-        if (faces) {
-            for (i = 0; i < nfaces; ++i) {
-                newfaces[i] = faces[i];
-            }
-            if (s_memStatsDecrement) {
-                s_memStatsDecrement(nfaces * sizeof(HbrFace<T>*));
-            }
-            m_memory -= nfaces * sizeof(HbrFace<T>*);
-            delete[] faces;
-        }
-        for (i = nfaces; i < nnfaces; ++i) {
-            newfaces[i] = 0;
-        }
-        faces = newfaces;
-        nfaces = nnfaces;
     }
     f = faces[maxFaceID];
     if (f) {
@@ -655,31 +651,15 @@ HbrMesh<T>::NewFace(int nv, HbrVertex<T> **vtx, HbrFace<T>* parent, int childind
     HbrFace<T> *f = 0;
     // Resize if needed
     if (nfaces <= maxFaceID) {
-        int nnfaces = nfaces;
-        while (nnfaces <= maxFaceID) {
-            nnfaces *= 2;
-            if (nnfaces < 1) nnfaces = 1;
+        while (nfaces <= maxFaceID) {
+            nfaces *= 2;
+            if (nfaces < 1) nfaces = 1;
         }
-        HbrFace<T>** newfaces = new HbrFace<T>*[nnfaces];
+        size_t oldsize = faces.size();        
+        faces.resize(nfaces);
         if (s_memStatsIncrement) {
-            s_memStatsIncrement(nnfaces * sizeof(HbrFace<T>*));
+            s_memStatsIncrement((faces.size() - oldsize) * sizeof(HbrVertex<T>*));
         }
-        m_memory += nnfaces * sizeof(HbrFace<T>*);
-        if (faces) {
-            for (int i = 0; i < nfaces; ++i) {
-                newfaces[i] = faces[i];
-            }
-            if (s_memStatsDecrement) {
-                s_memStatsDecrement(nfaces * sizeof(HbrFace<T>*));
-            }
-            m_memory -= nfaces * sizeof(HbrFace<T>*);
-            delete[] faces;
-        }
-        for (int i = nfaces; i < nnfaces; ++i) {
-            newfaces[i] = 0;
-        }
-        faces = newfaces;
-        nfaces = nnfaces;
     }
     f = faces[maxFaceID];
     if (f) {
@@ -720,6 +700,10 @@ HbrMesh<T>::Finish() {
         HbrVertex<T>* vertex = *vi;
         if (vertex->IsConnected()) vertex->Finish();
     }
+    // Finish may have added new vertices
+    vertexlist.clear();
+    GetVertices(std::back_inserter(vertexlist));
+
     // If interpolateboundary is on, process boundary edges
     if (interpboundarymethod == k_InterpolateBoundaryEdgeOnly || interpboundarymethod == k_InterpolateBoundaryEdgeAndCorner) {
         for (i = 0; i < nfaces; ++i) {
@@ -753,18 +737,18 @@ HbrMesh<T>::Finish() {
         // Push a sentinel null value - we rely upon this sentinel to
         // ensure face->GetHierarchicalEdits knows when to terminate
         hierarchicalEdits.push_back(0);
-	j = 0;
-	// Link faces to hierarchical edits
-	for (i = 0; i < nfaces; ++i) {
-	    if (faces[i]) {
-		while (j < nHierarchicalEdits && hierarchicalEdits[j]->GetFaceID() < i) {
-		    ++j;
-		}
-		if (j < nHierarchicalEdits && hierarchicalEdits[j]->GetFaceID() == i) {
-		    faces[i]->SetHierarchicalEdits(&hierarchicalEdits[j]);
-		}
-	    }
-	}
+        j = 0;
+        // Link faces to hierarchical edits
+        for (i = 0; i < nfaces; ++i) {
+            if (faces[i]) {
+                while (j < nHierarchicalEdits && hierarchicalEdits[j]->GetFaceID() < i) {
+                    ++j;
+                }
+                if (j < nHierarchicalEdits && hierarchicalEdits[j]->GetFaceID() == i) {
+                    faces[i]->SetHierarchicalEdits(&hierarchicalEdits[j]);
+                }
+            }
+        }
     }
 }
 
@@ -788,13 +772,8 @@ HbrMesh<T>::DeleteVertex(HbrVertex<T>* vertex) {
     if (v == vertex) {
         recycleIDs.insert(vertex->GetID());
         int id = vertex->GetID();
-        int arrayindex = id / vsetsize;
-        m_mutex.Lock();
-        int vertindex = id % vsetsize;
-        HbrVertex<T>** vset = vertices[arrayindex];
-        m_mutex.Unlock();
-        vset[vertindex] = 0;
-        vertex->Destroy();
+        vertices[id] = 0;
+        vertex->Destroy(this);
         m_vertexAllocator.Deallocate(vertex);
     }
 }
@@ -803,14 +782,9 @@ template <class T>
 int
 HbrMesh<T>::GetNumVertices() const {
     int count = 0;
-    m_mutex.Lock();
-    for (int vi = 0; vi < nvsets; ++vi) {
-        HbrVertex<T>** vset = vertices[vi];
-        for (int i = 0; i < vsetsize; ++i) {
-            if (vset[i]) count++;
-        }
+    for (int i = 0; i < nvertices; ++i) {
+        if (vertices[i]) count++;
     }
-    m_mutex.Unlock();
     return count;
 }
 
@@ -818,18 +792,13 @@ template <class T>
 int
 HbrMesh<T>::GetNumDisconnectedVertices() const {
     int disconnected = 0;
-    m_mutex.Lock();
-    for (int vi = 0; vi < nvsets; ++vi) {
-        HbrVertex<T>** vset = vertices[vi];
-        for (int i = 0; i < vsetsize; ++i) {
-            if (HbrVertex<T>* v = vset[i]) {
+    for (int i = 0; i < nvertices; ++i) {
+        if (HbrVertex<T>* v = vertices[i]) {
                 if (!v->IsConnected()) {
                     disconnected++;
                 }
             }
         }
-    }
-    m_mutex.Unlock();
     return disconnected;
 }
 
@@ -869,27 +838,17 @@ template <class T>
 template <typename OutputIterator>
 void
 HbrMesh<T>::GetVertices(OutputIterator lvertices) const {
-    m_mutex.Lock();
-    for (int vi = 0; vi < nvsets; ++vi) {
-        HbrVertex<T>** vset = vertices[vi];
-        for (int i = 0; i < vsetsize; ++i) {
-            if (vset[i]) *lvertices++ = vset[i];
-        }
+    for (int i = 0; i < nvertices; ++i) {
+        if (vertices[i]) *lvertices++ = vertices[i];
     }
-    m_mutex.Unlock();
 }
 
 template <class T>
 void
 HbrMesh<T>::ApplyOperatorAllVertices(HbrVertexOperator<T> &op) const {
-    m_mutex.Lock();
-    for (int vi = 0; vi < nvsets; ++vi) {
-        HbrVertex<T>** vset = vertices[vi];
-        for (int i = 0; i < vsetsize; ++i) {
-            if (vset[i]) op(*vset[i]);
-        }
+    for (int i = 0; i < nvertices; ++i) {    
+        if (vertices[i]) op(*vertices[i]);
     }
-    m_mutex.Unlock();
 }
 
 template <class T>
@@ -909,24 +868,20 @@ HbrMesh<T>::PrintStats(std::ostream &out) {
     int i, nv = 0;
     int disconnected = 0;
     int extraordinary = 0;
-    for (int vi = 0; vi < nvsets; ++vi) {
-        HbrVertex<T>** vset = vertices[vi];
-        for (i = 0; i < vsetsize; ++i) {
-            if (HbrVertex<T>* v = vset[i]) {
-                nv++;
-                if (v->IsSingular()) {
-                    out << "  singular: " << *v << "\n";
-                    singular++;
+    for (i = 0; i < nvertices; ++i) {
+        if (HbrVertex<T>* v = vertices[i]) {
+            nv++;
+            if (v->IsSingular()) {
+                out << "  singular: " << *v << "\n";
+                singular++;
+            } else if (!v->IsConnected()) {
+                out << "  disconnected: " << *v << "\n";
+                disconnected++;
+            } else {
+                if (v->IsExtraordinary()) {
+                    extraordinary++;
                 }
-                else if (!v->IsConnected()) {
-                    out << "  disconnected: " << *v << "\n";
-                    disconnected++;
-                } else {
-                    if (v->IsExtraordinary()) {
-                        extraordinary++;
-                    }
-                    sumvalence += v->GetValence();
-                }
+                sumvalence += v->GetValence();
             }
         }
     }
@@ -1040,17 +995,13 @@ HbrMesh<T>::FreeTransientData() {
             break;
         }
     }
-    // Reset max vertex ID. Slightly more complicated
-    m_mutex.Lock();
-    for (i = (nvsets * vsetsize) - 1; i >= 0; --i) {
-        int arrayindex = i / vsetsize;
-        int vertindex = i % vsetsize;
-        if (vertices[arrayindex][vertindex]) {
+    // Reset max vertex ID
+    for (i = nvertices - 1; i >= 0; --i) {
+        if (vertices[i]) {
             maxVertexID = i + 1;
             break;
         }
     }
-    m_mutex.Unlock();
 }
 
 } // end namespace OPENSUBDIV_VERSION
@@ -1058,4 +1009,4 @@ using namespace OPENSUBDIV_VERSION;
 
 } // end namespace OpenSubdiv
 
-#endif /* HBRMESH_H */
+#endif /* OPENSUBDIV3_HBRMESH_H */

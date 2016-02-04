@@ -1,66 +1,34 @@
 //
-//     Copyright (C) Pixar. All rights reserved.
+//   Copyright 2013 Pixar
 //
-//     This license governs use of the accompanying software. If you
-//     use the software, you accept this license. If you do not accept
-//     the license, do not use the software.
+//   Licensed under the Apache License, Version 2.0 (the "Apache License")
+//   with the following modification; you may not use this file except in
+//   compliance with the Apache License and the following modification to it:
+//   Section 6. Trademarks. is deleted and replaced with:
 //
-//     1. Definitions
-//     The terms "reproduce," "reproduction," "derivative works," and
-//     "distribution" have the same meaning here as under U.S.
-//     copyright law.  A "contribution" is the original software, or
-//     any additions or changes to the software.
-//     A "contributor" is any person or entity that distributes its
-//     contribution under this license.
-//     "Licensed patents" are a contributor's patent claims that read
-//     directly on its contribution.
+//   6. Trademarks. This License does not grant permission to use the trade
+//      names, trademarks, service marks, or product names of the Licensor
+//      and its affiliates, except as required to comply with Section 4(c) of
+//      the License and to reproduce the content of the NOTICE file.
 //
-//     2. Grant of Rights
-//     (A) Copyright Grant- Subject to the terms of this license,
-//     including the license conditions and limitations in section 3,
-//     each contributor grants you a non-exclusive, worldwide,
-//     royalty-free copyright license to reproduce its contribution,
-//     prepare derivative works of its contribution, and distribute
-//     its contribution or any derivative works that you create.
-//     (B) Patent Grant- Subject to the terms of this license,
-//     including the license conditions and limitations in section 3,
-//     each contributor grants you a non-exclusive, worldwide,
-//     royalty-free license under its licensed patents to make, have
-//     made, use, sell, offer for sale, import, and/or otherwise
-//     dispose of its contribution in the software or derivative works
-//     of the contribution in the software.
+//   You may obtain a copy of the Apache License at
 //
-//     3. Conditions and Limitations
-//     (A) No Trademark License- This license does not grant you
-//     rights to use any contributor's name, logo, or trademarks.
-//     (B) If you bring a patent claim against any contributor over
-//     patents that you claim are infringed by the software, your
-//     patent license from such contributor to the software ends
-//     automatically.
-//     (C) If you distribute any portion of the software, you must
-//     retain all copyright, patent, trademark, and attribution
-//     notices that are present in the software.
-//     (D) If you distribute any portion of the software in source
-//     code form, you may do so only under this license by including a
-//     complete copy of this license with your distribution. If you
-//     distribute any portion of the software in compiled or object
-//     code form, you may only do so under a license that complies
-//     with this license.
-//     (E) The software is licensed "as-is." You bear the risk of
-//     using it. The contributors give no express warranties,
-//     guarantees or conditions. You may have additional consumer
-//     rights under your local laws which this license cannot change.
-//     To the extent permitted under your local laws, the contributors
-//     exclude the implied warranties of merchantability, fitness for
-//     a particular purpose and non-infringement.
+//       http://www.apache.org/licenses/LICENSE-2.0
 //
+//   Unless required by applicable law or agreed to in writing, software
+//   distributed under the Apache License with the above modification is
+//   distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+//   KIND, either express or implied. See the Apache License for the specific
+//   language governing permissions and limitations under the Apache License.
+//
+
 #include "../common/shape_utils.h"
 
 struct shaperec {
 
-    shaperec(char const * iname, char const * idata, Scheme ischeme) :
+    shaperec(char const * iname, std::string const & idata, Scheme ischeme) :
         name(iname), data(idata), scheme(ischeme) { }
-    
+
     std::string name,
                 data;
     Scheme      scheme;
@@ -69,6 +37,8 @@ struct shaperec {
 static std::vector<shaperec> g_shapes;
 
 #include "../shapes/bilinear_cube.h"
+#include "../shapes/catmark_chaikin0.h"
+#include "../shapes/catmark_chaikin1.h"
 #include "../shapes/catmark_cube_corner0.h"
 #include "../shapes/catmark_cube_corner1.h"
 #include "../shapes/catmark_cube_corner2.h"
@@ -81,6 +51,8 @@ static std::vector<shaperec> g_shapes;
 #include "../shapes/catmark_dart_edgeonly.h"
 #include "../shapes/catmark_edgecorner.h"
 #include "../shapes/catmark_edgeonly.h"
+#include "../shapes/catmark_flap.h"
+#include "../shapes/catmark_flap2.h"
 #include "../shapes/catmark_pyramid_creases0.h"
 #include "../shapes/catmark_pyramid_creases1.h"
 #include "../shapes/catmark_pyramid.h"
@@ -99,10 +71,14 @@ static std::vector<shaperec> g_shapes;
 #include "../shapes/loop_saddle_edgeonly.h"
 #include "../shapes/loop_triangle_edgecorner.h"
 #include "../shapes/loop_triangle_edgeonly.h"
+#include "../shapes/loop_chaikin0.h"
+#include "../shapes/loop_chaikin1.h"
 
 //------------------------------------------------------------------------------
 static void initShapes() {
     g_shapes.push_back( shaperec("bilinear_cube",            bilinear_cube,            kBilinear) );
+    g_shapes.push_back( shaperec("catmark_chaikin0",         catmark_chaikin0,         kCatmark ) );
+    g_shapes.push_back( shaperec("catmark_chaikin1",         catmark_chaikin1,         kCatmark ) );
     g_shapes.push_back( shaperec("catmark_cube_corner0",     catmark_cube_corner0,     kCatmark ) );
     g_shapes.push_back( shaperec("catmark_cube_corner1",     catmark_cube_corner1,     kCatmark ) );
     g_shapes.push_back( shaperec("catmark_cube_corner2",     catmark_cube_corner2,     kCatmark ) );
@@ -115,6 +91,8 @@ static void initShapes() {
     g_shapes.push_back( shaperec("catmark_dart_edgeonly",    catmark_dart_edgeonly,    kCatmark ) );
     g_shapes.push_back( shaperec("catmark_edgecorner",       catmark_edgecorner,       kCatmark ) );
     g_shapes.push_back( shaperec("catmark_edgeonly",         catmark_edgeonly,         kCatmark ) );
+    g_shapes.push_back( shaperec("catmark_flap",             catmark_flap,             kCatmark ) );
+    g_shapes.push_back( shaperec("catmark_flap2",            catmark_flap2,            kCatmark ) );
     g_shapes.push_back( shaperec("catmark_pyramid_creases0", catmark_pyramid_creases0, kCatmark ) );
     g_shapes.push_back( shaperec("catmark_pyramid_creases1", catmark_pyramid_creases1, kCatmark ) );
     g_shapes.push_back( shaperec("catmark_pyramid",          catmark_pyramid,          kCatmark ) );
@@ -133,5 +111,7 @@ static void initShapes() {
     g_shapes.push_back( shaperec("loop_saddle_edgeonly",     loop_saddle_edgeonly,     kLoop ) );
     g_shapes.push_back( shaperec("loop_triangle_edgecorner", loop_triangle_edgecorner, kLoop ) );
     g_shapes.push_back( shaperec("loop_triangle_edgeonly",   loop_triangle_edgeonly,   kLoop ) );
+    g_shapes.push_back( shaperec("loop_chaikin0",            loop_chaikin0,            kLoop ) );
+    g_shapes.push_back( shaperec("loop_chaikin1",            loop_chaikin1,            kLoop ) );
 }
 //------------------------------------------------------------------------------

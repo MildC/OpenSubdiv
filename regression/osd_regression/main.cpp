@@ -1,93 +1,59 @@
 //
-//     Copyright (C) Pixar. All rights reserved.
+//   Copyright 2013 Pixar
 //
-//     This license governs use of the accompanying software. If you
-//     use the software, you accept this license. If you do not accept
-//     the license, do not use the software.
+//   Licensed under the Apache License, Version 2.0 (the "Apache License")
+//   with the following modification; you may not use this file except in
+//   compliance with the Apache License and the following modification to it:
+//   Section 6. Trademarks. is deleted and replaced with:
 //
-//     1. Definitions
-//     The terms "reproduce," "reproduction," "derivative works," and
-//     "distribution" have the same meaning here as under U.S.
-//     copyright law.  A "contribution" is the original software, or
-//     any additions or changes to the software.
-//     A "contributor" is any person or entity that distributes its
-//     contribution under this license.
-//     "Licensed patents" are a contributor's patent claims that read
-//     directly on its contribution.
+//   6. Trademarks. This License does not grant permission to use the trade
+//      names, trademarks, service marks, or product names of the Licensor
+//      and its affiliates, except as required to comply with Section 4(c) of
+//      the License and to reproduce the content of the NOTICE file.
 //
-//     2. Grant of Rights
-//     (A) Copyright Grant- Subject to the terms of this license,
-//     including the license conditions and limitations in section 3,
-//     each contributor grants you a non-exclusive, worldwide,
-//     royalty-free copyright license to reproduce its contribution,
-//     prepare derivative works of its contribution, and distribute
-//     its contribution or any derivative works that you create.
-//     (B) Patent Grant- Subject to the terms of this license,
-//     including the license conditions and limitations in section 3,
-//     each contributor grants you a non-exclusive, worldwide,
-//     royalty-free license under its licensed patents to make, have
-//     made, use, sell, offer for sale, import, and/or otherwise
-//     dispose of its contribution in the software or derivative works
-//     of the contribution in the software.
+//   You may obtain a copy of the Apache License at
 //
-//     3. Conditions and Limitations
-//     (A) No Trademark License- This license does not grant you
-//     rights to use any contributor's name, logo, or trademarks.
-//     (B) If you bring a patent claim against any contributor over
-//     patents that you claim are infringed by the software, your
-//     patent license from such contributor to the software ends
-//     automatically.
-//     (C) If you distribute any portion of the software, you must
-//     retain all copyright, patent, trademark, and attribution
-//     notices that are present in the software.
-//     (D) If you distribute any portion of the software in source
-//     code form, you may do so only under this license by including a
-//     complete copy of this license with your distribution. If you
-//     distribute any portion of the software in compiled or object
-//     code form, you may only do so under a license that complies
-//     with this license.
-//     (E) The software is licensed "as-is." You bear the risk of
-//     using it. The contributors give no express warranties,
-//     guarantees or conditions. You may have additional consumer
-//     rights under your local laws which this license cannot change.
-//     To the extent permitted under your local laws, the contributors
-//     exclude the implied warranties of merchantability, fitness for
-//     a particular purpose and non-infringement.
+//       http://www.apache.org/licenses/LICENSE-2.0
+//
+//   Unless required by applicable law or agreed to in writing, software
+//   distributed under the Apache License with the above modification is
+//   distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+//   KIND, either express or implied. See the Apache License for the specific
+//   language governing permissions and limitations under the Apache License.
 //
 
 #if defined(__APPLE__)
-    #include <GLUT/glut.h>
+    #if defined(OSD_USES_GLEW)
+        #include <GL/glew.h>
+    #else
+        #include <OpenGL/gl3.h>
+    #endif
+    #define GLFW_INCLUDE_GL3
+    #define GLFW_NO_GLU
 #else
     #include <stdlib.h>
     #include <GL/glew.h>
-    #include <GL/glut.h>
+    #if defined(_WIN32)
+        // XXX Must include windows.h here or GLFW pollutes the global namespace
+        #define WIN32_LEAN_AND_MEAN
+        #include <windows.h>
+    #endif
 #endif
+
+#include <GLFW/glfw3.h>
+GLFWwindow* g_window=0;
 
 #include <stdio.h>
 #include <cassert>
 
-#include <osd/mutex.h>
+#include <osd/cpuEvaluator.h>
+#include <osd/cpuVertexBuffer.h>
+#include <osd/cpuGLVertexBuffer.h>
+#include <far/stencilTableFactory.h>
 
-#include <hbr/mesh.h>
-#include <hbr/face.h>
-#include <hbr/vertex.h>
-#include <hbr/halfedge.h>
-#include <hbr/catmark.h>
-
-#include <osd/vertex.h>
-#include <osd/mesh.h>
-#include <osd/cpuDispatcher.h>
-#include <osd/glslDispatcher.h>
-
-#ifdef OPENSUBDIV_HAS_CUDA
-    #include <osd/cudaDispatcher.h>
-#endif
-
-#ifdef OPENSUBDIV_HAS_OPENCL
-    #include <osd/clDispatcher.h>
-#endif
-
-#include "../common/shape_utils.h"
+#include "../common/cmp_utils.h"
+#include "../common/hbr_utils.h"
+#include "../common/far_utils.h"
 
 //
 // Regression testing matching Osd to Hbr
@@ -101,6 +67,22 @@
 // - only vertex interpolation is being tested at the moment.
 //
 #define PRECISION 1e-6
+
+using namespace OpenSubdiv;    
+
+//------------------------------------------------------------------------------
+enum BackendType {
+    kBackendCPU   = 0, // raw CPU
+    kBackendCPUGL = 1, // CPU with GL-backed buffer
+    kBackendCount
+};
+
+static const char* g_BackendNames[kBackendCount] = {
+    "CPU",
+    "CPUGL",
+};
+
+static int g_Backend = -1;
 
 //------------------------------------------------------------------------------
 // Vertex class implementation
@@ -149,21 +131,6 @@ struct xyzVV {
                  }
              }
 
-    void ApplyVertexEdit(OpenSubdiv::FarVertexEdit const & edit) {
-        const float *src = edit.GetEdit();
-        switch(edit.GetOperation()) {
-          case OpenSubdiv::FarVertexEdit::Set:
-            _pos[0] = src[0];
-            _pos[1] = src[1];
-            _pos[2] = src[2];
-            break;
-          case OpenSubdiv::FarVertexEdit::Add:
-            _pos[0] += src[0];
-            _pos[1] += src[1];
-            _pos[2] += src[2];
-            break;
-        }
-    }
     
     void     ApplyMovingVertexEdit(const OpenSubdiv::HbrMovingVertexEdit<xyzVV> &) { }
 
@@ -174,6 +141,7 @@ private:
 };
 
 //------------------------------------------------------------------------------
+
 class xyzFV;
 typedef OpenSubdiv::HbrMesh<xyzVV>           xyzmesh;
 typedef OpenSubdiv::HbrFace<xyzVV>           xyzface;
@@ -182,73 +150,60 @@ typedef OpenSubdiv::HbrHalfedge<xyzVV>       xyzhalfedge;
 typedef OpenSubdiv::HbrFaceOperator<xyzVV>   xyzFaceOperator;
 typedef OpenSubdiv::HbrVertexOperator<xyzVV> xyzVertexOperator;
 
-//------------------------------------------------------------------------------
-// Returns true if a vertex or any of its parents is on a boundary
-bool VertexOnBoundary( xyzvertex const * v ) {
+typedef OpenSubdiv::Far::TopologyRefiner FarTopologyRefiner;
 
-    if (not v)
-        return false;
-
-    if (v->OnBoundary())
-        return true;
-
-    xyzvertex const * pv = v->GetParentVertex();
-    if (pv)
-        return VertexOnBoundary(pv);
-    else {
-        xyzhalfedge const * pe = v->GetParentEdge();
-        if (pe) {
-              return VertexOnBoundary(pe->GetOrgVertex()) or
-                     VertexOnBoundary(pe->GetDestVertex());
-        } else {
-            xyzface const * pf = v->GetParentFace(), * rootf = pf;
-            while (pf) {
-                pf = pf->GetParent();
-                if (pf)
-                    rootf=pf;
-            }
-            if (rootf)
-                for (int i=0; i<rootf->GetNumVertices(); ++i)
-                    if (rootf->GetVertex(i)->OnBoundary())
-                        return true;
-        }
-    }
-    return false;
-}
 
 //------------------------------------------------------------------------------
+int 
+checkVertexBuffer( 
+    const FarTopologyRefiner &refiner, xyzmesh * hmesh, 
+    const float * vbData, int numElements) {
 
-int checkVertexBuffer( xyzmesh * hmesh,
-                       OpenSubdiv::OsdCpuVertexBuffer * vb,
-                       std::vector<int> const & remap) {
     int count=0;
     float deltaAvg[3] = {0.0f, 0.0f, 0.0f},
           deltaCnt[3] = {0.0f, 0.0f, 0.0f};
 
-    int nverts = hmesh->GetNumVertices();
+    std::vector<xyzVV> hbrVertexData;
+    std::vector<bool>  hbrVertexOnBoundaryData;
+
+    // Only care about vertex on boundary conditions if the interpolate boundary
+    // is 'none'
+    std::vector<bool> *hbrVertexOnBoundaryPtr =
+        (hmesh->GetInterpolateBoundaryMethod() == 
+            xyzmesh::k_InterpolateBoundaryNone)
+        ? &hbrVertexOnBoundaryData
+        : NULL;
+
+
+    GetReorderedHbrVertexData(refiner, *hmesh, &hbrVertexData, 
+        hbrVertexOnBoundaryPtr);
+
+    //int nverts = hmesh->GetNumVertices();
+    int nverts = (int)hbrVertexData.size();
+
     for (int i=0; i<nverts; ++i) {
 
-        xyzvertex * hv = hmesh->GetVertex(i);
+        const float * ov = & vbData[ i * numElements ];
 
-        float * ov = & vb->GetCpuBuffer()[ remap[ hv->GetID() ] * vb->GetNumElements() ];
-
-        // boundary interpolation rules set to "none" produce "undefined" vertices on
-        // boundary vertices : far does not match hbr for those, so skip comparison.
-        if ( hmesh->GetInterpolateBoundaryMethod()==xyzmesh::k_InterpolateBoundaryNone and
-             VertexOnBoundary(hv) )
+        // boundary interpolation rules set to "none" produce "undefined" 
+        // vertices on boundary vertices : far does not match hbr for those,
+        // so skip comparison.
+        if (hbrVertexOnBoundaryPtr and (*hbrVertexOnBoundaryPtr)[i])
              continue;
 
+        const float *hbrPos = hbrVertexData[i].GetPos();
 
-        if ( hv->GetData().GetPos()[0] != ov[0] )
+
+        if ( hbrPos[0] != ov[0] )
             deltaCnt[0]++;
-        if ( hv->GetData().GetPos()[1] != ov[1] )
+        if ( hbrPos[1] != ov[1] )
             deltaCnt[1]++;
-        if ( hv->GetData().GetPos()[2] != ov[2] )
+        if ( hbrPos[2] != ov[2] )
             deltaCnt[2]++;
 
-        float delta[3] = { hv->GetData().GetPos()[0] - ov[0],
-                           hv->GetData().GetPos()[1] - ov[1],
-                           hv->GetData().GetPos()[2] - ov[2] };
+        float delta[3] = { hbrPos[0] - ov[0],
+                           hbrPos[1] - ov[1],
+                           hbrPos[2] - ov[2] };
 
         deltaAvg[0]+=delta[0];
         deltaAvg[1]+=delta[1];
@@ -257,9 +212,9 @@ int checkVertexBuffer( xyzmesh * hmesh,
         float dist = sqrtf( delta[0]*delta[0]+delta[1]*delta[1]+delta[2]*delta[2]);
         if ( dist > PRECISION ) {
             printf("// HbrVertex<T> %d fails : dist=%.10f (%.10f %.10f %.10f)"
-                   " (%.10f %.10f %.10f)\n", i, dist, hv->GetData().GetPos()[0],
-                                                      hv->GetData().GetPos()[1],
-                                                      hv->GetData().GetPos()[2],
+                   " (%.10f %.10f %.10f)\n", i, dist, hbrPos[0],
+                                                      hbrPos[1],
+                                                      hbrPos[2],
                                                       ov[0],
                                                       ov[1],
                                                       ov[2] );
@@ -287,75 +242,128 @@ int checkVertexBuffer( xyzmesh * hmesh,
 }
 
 //------------------------------------------------------------------------------
-static void refine( xyzmesh * mesh, int maxlevel ) {
+static void
+buildStencilTable(
+    const FarTopologyRefiner &refiner,
+    Far::StencilTable const **vertexStencils,
+    Far::StencilTable const **varyingStencils)
+{
+    Far::StencilTableFactory::Options soptions;
+    soptions.generateOffsets = true;
+    soptions.generateIntermediateLevels = true;
 
-    for (int l=0; l<maxlevel; ++l ) {
-        int nfaces = mesh->GetNumFaces();
-        for (int i=0; i<nfaces; ++i) {
-            xyzface * f = mesh->GetFace(i);
-            if (f->GetDepth()==l)
-                f->Refine();
-        }
-    }
+    *vertexStencils = Far::StencilTableFactory::Create(refiner, soptions);
 
+    soptions.interpolationMode = Far::StencilTableFactory::INTERPOLATE_VARYING;
+    *varyingStencils = Far::StencilTableFactory::Create(refiner, soptions);
 }
 
+
+
 //------------------------------------------------------------------------------
-int checkMesh( char const * msg, char const * shape, int levels, Scheme scheme=kCatmark ) {
+static int 
+checkMeshCPU( FarTopologyRefiner *refiner,
+              const std::vector<xyzVV>& coarseverts,
+              xyzmesh * refmesh) {
 
-    int result =0;
+    Far::StencilTable const *vertexStencils;
+    Far::StencilTable const *varyingStencils;
+    buildStencilTable(*refiner, &vertexStencils, &varyingStencils);
 
-    printf("- %s (scheme=%d)\n", msg, scheme);
+    assert(coarseverts.size() == (size_t)refiner->GetNumVerticesTotal());
+    
+    Osd::CpuVertexBuffer * vb = 
+        Osd::CpuVertexBuffer::Create(3, refiner->GetNumVerticesTotal());
+    
+    vb->UpdateData( coarseverts[0].GetPos(), 0, (int)coarseverts.size() );
+    
+    Osd::CpuEvaluator::EvalStencils(
+        vb, Osd::BufferDescriptor(0, 3, 3),
+        vb, Osd::BufferDescriptor(refiner->GetLevel(0).GetNumVertices()*3, 3, 3),
+        vertexStencils);
 
-    xyzmesh * refmesh = simpleHbr<xyzVV>(shape, scheme, 0);
+    int result = checkVertexBuffer(*refiner, refmesh, vb->BindCpuBuffer(), 
+        vb->GetNumElements());
 
-    refine( refmesh, levels );
-
-
-    std::vector<float> coarseverts;
-
-    OpenSubdiv::OsdHbrMesh * hmesh = simpleHbr<OpenSubdiv::OsdVertex>(shape, scheme, coarseverts);
-
-    OpenSubdiv::OsdMesh * omesh = new OpenSubdiv::OsdMesh();
-
-
-    std::vector<int> remap;
-
-    {
-        omesh->Create(hmesh, levels, (int)OpenSubdiv::OsdKernelDispatcher::kCPU, &remap);
-
-        OpenSubdiv::OsdCpuVertexBuffer * vb =
-            dynamic_cast<OpenSubdiv::OsdCpuVertexBuffer *>(omesh->InitializeVertexBuffer(3));
-
-        vb->UpdateData( & coarseverts[0], (int)coarseverts.size()/3 );
-
-        omesh->Subdivide( vb, NULL );
-
-        omesh->Synchronize();
-
-        checkVertexBuffer(refmesh, vb, remap);
-    }
-
-    delete hmesh;
+    delete vertexStencils;
+    delete varyingStencils;
+    delete vb;
 
     return result;
 }
 
 //------------------------------------------------------------------------------
-int main(int argc, char ** argv) {
+static int 
+checkMeshCPUGL(FarTopologyRefiner *refiner,
+               const std::vector<xyzVV>& coarseverts,
+               xyzmesh * refmesh) {
 
-    // Make sure we have an OpenGL context.
-    glutInit(&argc, argv);
-    glutCreateWindow("osd_regression");
-    glewInit();
+    Far::StencilTable const *vertexStencils;
+    Far::StencilTable const *varyingStencils;
+    buildStencilTable(*refiner, &vertexStencils, &varyingStencils);
+    
+    Osd::CpuGLVertexBuffer *vb = Osd::CpuGLVertexBuffer::Create(3, 
+        refiner->GetNumVerticesTotal());
+    
+    vb->UpdateData( coarseverts[0].GetPos(), 0, (int)coarseverts.size() );
 
-    int levels=5, total=0;
+    Osd::CpuEvaluator::EvalStencils(
+        vb, Osd::BufferDescriptor(0, 3, 3),
+        vb, Osd::BufferDescriptor(refiner->GetLevel(0).GetNumVertices()*3, 3, 3),
+        vertexStencils);
 
-    // Register Osd compute kernels
-    OpenSubdiv::OsdCpuKernelDispatcher::Register();
+    int result = checkVertexBuffer(*refiner, refmesh, 
+        vb->BindCpuBuffer(), vb->GetNumElements());
+
+    delete vertexStencils;
+    delete varyingStencils;
+    delete vb;
+    
+    return result;
+}
+
+//------------------------------------------------------------------------------
+static int 
+checkMesh( char const * msg, std::string const & shape, int levels, Scheme scheme, int backend ) {
+
+    int result =0;
+
+    printf("- %s (scheme=%d)\n", msg, scheme);
+
+    xyzmesh * refmesh = 
+        interpolateHbrVertexData<xyzVV>(shape.c_str(), scheme, levels);
+
+    std::vector<xyzVV> farVertexData;
+
+    FarTopologyRefiner *refiner =
+        InterpolateFarVertexData(shape.c_str(), scheme, levels, 
+            farVertexData);
+
+    switch (backend) {
+        case kBackendCPU:
+            result = checkMeshCPU(refiner, farVertexData, refmesh); 
+            break;
+        case kBackendCPUGL: 
+            result = checkMeshCPUGL(refiner, farVertexData, refmesh); 
+            break;
+    }
+
+    delete refmesh;
+    delete refiner;
+
+    return result;
+}
+
+//------------------------------------------------------------------------------
+int checkBackend(int backend, int levels) {
+
+    printf("*** checking backend : %s\n", g_BackendNames[backend]);
+
+    int total = 0;
 
 #define test_catmark_edgeonly
 #define test_catmark_edgecorner
+#define test_catmark_flap
 #define test_catmark_pyramid
 #define test_catmark_pyramid_creases0
 #define test_catmark_pyramid_creases1
@@ -372,10 +380,13 @@ int main(int argc, char ** argv) {
 #define test_catmark_tent
 #define test_catmark_tent_creases0
 #define test_catmark_tent_creases1
-#define test_catmark_square_hedit0
-#define test_catmark_square_hedit1
-#define test_catmark_square_hedit2
-#define test_catmark_square_hedit3
+
+
+// hedits don't work.
+//#define test_catmark_square_hedit0
+//#define test_catmark_square_hedit1
+//#define test_catmark_square_hedit2
+//#define test_catmark_square_hedit3
 
 #define test_loop_triangle_edgeonly
 #define test_loop_triangle_edgecorner
@@ -386,165 +397,276 @@ int main(int argc, char ** argv) {
 
 #define test_bilinear_cube
 
-    printf("precision : %f\n",PRECISION);
 
 #ifdef test_catmark_edgeonly
 #include "../shapes/catmark_edgeonly.h"
-    total += checkMesh( "test_catmark_edgeonly", catmark_edgeonly, levels, kCatmark );
+    total += checkMesh( "test_catmark_edgeonly", catmark_edgeonly, levels, kCatmark, backend );
 #endif
 
 #ifdef test_catmark_edgecorner
 #include "../shapes/catmark_edgecorner.h"
-    total += checkMesh( "test_catmark_edgeonly", catmark_edgecorner, levels, kCatmark );
+    total += checkMesh( "test_catmark_edgeonly", catmark_edgecorner, levels, kCatmark, backend );
+#endif
+
+#ifdef test_catmark_flap
+#include "../shapes/catmark_flap.h"
+    total += checkMesh( "test_catmark_flap", catmark_flap, levels, kCatmark, backend );
 #endif
 
 #ifdef test_catmark_pyramid
 #include "../shapes/catmark_pyramid.h"
-    total += checkMesh( "test_catmark_pyramid", catmark_pyramid, levels, kCatmark );
+    total += checkMesh( "test_catmark_pyramid", catmark_pyramid, levels, kCatmark, backend );
 #endif
 
 #ifdef test_catmark_pyramid_creases0
 #include "../shapes/catmark_pyramid_creases0.h"
-    total += checkMesh( "test_catmark_pyramid_creases0", catmark_pyramid_creases0, levels, kCatmark );
+    total += checkMesh( "test_catmark_pyramid_creases0", catmark_pyramid_creases0, levels, kCatmark, backend );
 #endif
 
 #ifdef test_catmark_pyramid_creases1
 #include "../shapes/catmark_pyramid_creases1.h"
-    total += checkMesh( "test_catmark_pyramid_creases1", catmark_pyramid_creases1, levels, kCatmark );
+    total += checkMesh( "test_catmark_pyramid_creases1", catmark_pyramid_creases1, levels, kCatmark, backend );
 #endif
 
 #ifdef test_catmark_cube
 #include "../shapes/catmark_cube.h"
-    total += checkMesh( "test_catmark_cube", catmark_cube, levels, kCatmark );
+    total += checkMesh( "test_catmark_cube", catmark_cube, levels, kCatmark, backend );
 #endif
 
 #ifdef test_catmark_cube_creases0
 #include "../shapes/catmark_cube_creases0.h"
-    total += checkMesh( "test_catmark_cube_creases0", catmark_cube_creases0, levels, kCatmark );
+    total += checkMesh( "test_catmark_cube_creases0", catmark_cube_creases0, levels, kCatmark, backend );
 #endif
 
 #ifdef test_catmark_cube_creases1
 #include "../shapes/catmark_cube_creases1.h"
-    total += checkMesh( "test_catmark_cube_creases1", catmark_cube_creases1, levels, kCatmark );
+    total += checkMesh( "test_catmark_cube_creases1", catmark_cube_creases1, levels, kCatmark, backend );
 #endif
 
 #ifdef test_catmark_cube_corner0
 #include "../shapes/catmark_cube_corner0.h"
-    total += checkMesh( "test_catmark_cube_corner0", catmark_cube_corner0, levels, kCatmark );
+    total += checkMesh( "test_catmark_cube_corner0", catmark_cube_corner0, levels, kCatmark, backend );
 #endif
 
 #ifdef test_catmark_cube_corner1
 #include "../shapes/catmark_cube_corner1.h"
-    total += checkMesh( "test_catmark_cube_corner1", catmark_cube_corner1, levels, kCatmark );
+    total += checkMesh( "test_catmark_cube_corner1", catmark_cube_corner1, levels, kCatmark, backend );
 #endif
 
 #ifdef test_catmark_cube_corner2
 #include "../shapes/catmark_cube_corner2.h"
-    total += checkMesh( "test_catmark_cube_corner2", catmark_cube_corner2, levels, kCatmark );
+    total += checkMesh( "test_catmark_cube_corner2", catmark_cube_corner2, levels, kCatmark, backend );
 #endif
 
 #ifdef test_catmark_cube_corner3
 #include "../shapes/catmark_cube_corner3.h"
-    total += checkMesh( "test_catmark_cube_corner3", catmark_cube_corner3, levels, kCatmark );
+    total += checkMesh( "test_catmark_cube_corner3", catmark_cube_corner3, levels, kCatmark, backend );
 #endif
 
 #ifdef test_catmark_cube_corner4
 #include "../shapes/catmark_cube_corner4.h"
-    total += checkMesh( "test_catmark_cube_corner4", catmark_cube_corner4, levels, kCatmark );
+    total += checkMesh( "test_catmark_cube_corner4", catmark_cube_corner4, levels, kCatmark, backend );
 #endif
 
 #ifdef test_catmark_dart_edgecorner
 #include "../shapes/catmark_dart_edgecorner.h"
-    total += checkMesh( "test_catmark_dart_edgecorner", catmark_dart_edgecorner, levels, kCatmark );
+    total += checkMesh( "test_catmark_dart_edgecorner", catmark_dart_edgecorner, levels, kCatmark, backend );
 #endif
 
 #ifdef test_catmark_dart_edgeonly
 #include "../shapes/catmark_dart_edgeonly.h"
-    total += checkMesh( "test_catmark_dart_edgeonly", catmark_dart_edgeonly, levels, kCatmark );
+    total += checkMesh( "test_catmark_dart_edgeonly", catmark_dart_edgeonly, levels, kCatmark, backend );
 #endif
 
 #ifdef test_catmark_tent
 #include "../shapes/catmark_tent.h"
-    total += checkMesh( "test_catmark_tent", catmark_tent, levels, kCatmark );
+    total += checkMesh( "test_catmark_tent", catmark_tent, levels, kCatmark, backend );
 #endif
 
 #ifdef test_catmark_tent_creases0
 #include "../shapes/catmark_tent_creases0.h"
-    total += checkMesh( "test_catmark_tent_creases0", catmark_tent_creases0, levels );
+    total += checkMesh( "test_catmark_tent_creases0", catmark_tent_creases0, levels, kCatmark, backend );
 #endif
 
 #ifdef test_catmark_tent_creases1
 #include "../shapes/catmark_tent_creases1.h"
-    total += checkMesh( "test_catmark_tent_creases1", catmark_tent_creases1, levels );
+    total += checkMesh( "test_catmark_tent_creases1", catmark_tent_creases1, levels, kCatmark, backend );
 #endif
 
 #ifdef test_catmark_square_hedit0
 #include "../shapes/catmark_square_hedit0.h"
-    total += checkMesh( "test_catmark_square_hedit0", catmark_square_hedit0, levels );
+    total += checkMesh( "test_catmark_square_hedit0", catmark_square_hedit0, levels, kCatmark, backend );
 #endif
 
 #ifdef test_catmark_square_hedit1
 #include "../shapes/catmark_square_hedit1.h"
-    total += checkMesh( "test_catmark_square_hedit1", catmark_square_hedit1, levels );
+    total += checkMesh( "test_catmark_square_hedit1", catmark_square_hedit1, levels, kCatmark, backend );
 #endif
 
 #ifdef test_catmark_square_hedit2
 #include "../shapes/catmark_square_hedit2.h"
-    total += checkMesh( "test_catmark_square_hedit2", catmark_square_hedit2, levels );
+    total += checkMesh( "test_catmark_square_hedit2", catmark_square_hedit2, levels, kCatmark, backend );
 #endif
 
 #ifdef test_catmark_square_hedit3
 #include "../shapes/catmark_square_hedit3.h"
-    total += checkMesh( "test_catmark_square_hedit3", catmark_square_hedit3, levels );
+    total += checkMesh( "test_catmark_square_hedit3", catmark_square_hedit3, levels, kCatmark, backend );
 #endif
 
 
 #ifdef test_loop_triangle_edgeonly
 #include "../shapes/loop_triangle_edgeonly.h"
-    total += checkMesh( "test_loop_triangle_edgeonly", loop_triangle_edgeonly, levels, kLoop );
+    total += checkMesh( "test_loop_triangle_edgeonly", loop_triangle_edgeonly, levels, kLoop, backend );
 #endif
 
 #ifdef test_loop_triangle_edgecorner
 #include "../shapes/loop_triangle_edgecorner.h"
-    total += checkMesh( "test_loop_triangle_edgecorner", loop_triangle_edgecorner, levels, kLoop );
+    total += checkMesh( "test_loop_triangle_edgecorner", loop_triangle_edgecorner, levels, kLoop, backend );
 #endif
 
 #ifdef test_loop_saddle_edgeonly
 #include "../shapes/loop_saddle_edgeonly.h"
-    total += checkMesh( "test_loop_saddle_edgeonly", loop_saddle_edgeonly, levels, kLoop );
+    total += checkMesh( "test_loop_saddle_edgeonly", loop_saddle_edgeonly, levels, kLoop, backend );
 #endif
 
 #ifdef test_loop_saddle_edgecorner
 #include "../shapes/loop_saddle_edgecorner.h"
-    total += checkMesh( "test_loop_saddle_edgecorner", loop_saddle_edgecorner, levels, kLoop );
+    total += checkMesh( "test_loop_saddle_edgecorner", loop_saddle_edgecorner, levels, kLoop, backend );
 #endif
 
 #ifdef test_loop_icosahedron
 #include "../shapes/loop_icosahedron.h"
-    total += checkMesh( "test_loop_icosahedron", loop_icosahedron, levels, kLoop );
+    total += checkMesh( "test_loop_icosahedron", loop_icosahedron, levels, kLoop, backend );
 #endif
 
 #ifdef test_loop_cube
 #include "../shapes/loop_cube.h"
-    total += checkMesh( "test_loop_cube", loop_cube, levels, kLoop );
+    total += checkMesh( "test_loop_cube", loop_cube, levels, kLoop, backend );
 #endif
 
 #ifdef test_loop_cube_creases0
 #include "../shapes/loop_cube_creases0.h"
-    total += checkMesh( "test_loop_cube_creases0", loop_cube_creases0,levels, kLoop );
+    total += checkMesh( "test_loop_cube_creases0", loop_cube_creases0,levels, kLoop, backend );
 #endif
 
 #ifdef test_loop_cube_creases1
 #include "../shapes/loop_cube_creases1.h"
-    total += checkMesh( "test_loop_cube_creases1", loop_cube_creases1, levels, kLoop );
+    total += checkMesh( "test_loop_cube_creases1", loop_cube_creases1, levels, kLoop, backend );
 #endif
 
 
 
 #ifdef test_bilinear_cube
 #include "../shapes/bilinear_cube.h"
-    total += checkMesh( "test_bilinear_cube", bilinear_cube, levels, kBilinear );
+    total += checkMesh( "test_bilinear_cube", bilinear_cube, levels, kBilinear, backend );
 #endif
+
+    return total;
+}
+
+//------------------------------------------------------------------------------
+static void
+usage(char ** argv) {
+    printf("%s [<options>]\n\n", argv[0]);
+    printf("    Options :\n");
+    
+    printf("        -compute <backend>\n");
+    printf("        Compute backend applied (");
+    for (int i=0; i < kBackendCount; ++i)
+        printf("%s ", g_BackendNames[i]);
+    printf(").\n");
+    
+    printf("        -help / -h\n");
+    printf("        Displays usage information.");
+      
+}
+
+//------------------------------------------------------------------------------
+static void 
+parseArgs(int argc, char ** argv) {
+
+    for (int argi=1; argi<argc; ++argi) {
+        if (not strcmp(argv[argi],"-compute")) {
+        
+            const char * backend = NULL;
+            
+            if (argi<(argc-1))
+                backend = argv[++argi];
+
+            if (not strcmp(backend, "all")) {
+              g_Backend = -1;
+            } else {
+              bool found = false;
+              for (int i = 0; i < kBackendCount; ++i) {
+                if (not strcmp(backend, g_BackendNames[i])) {
+                  g_Backend = i;
+                  found = true;
+                  break;
+                }
+              }
+              if (not found) {
+                printf("-compute : must be 'all' or one of: ");
+                for (int i = 0; i < kBackendCount; ++i)
+                    printf("%s ", g_BackendNames[i]);
+                printf("\n");
+                exit(0);
+              }
+            }
+        } else if ( (not strcmp(argv[argi],"-help")) or
+                    (not strcmp(argv[argi],"-h")) ) {
+            usage(argv);
+            exit(1);
+        } else {
+            usage(argv);
+            exit(0);
+        }
+    }
+}
+
+//------------------------------------------------------------------------------
+int 
+main(int argc, char ** argv) {
+
+    // Run with no args tests default (CPU) backend.
+    // "-backend all" tests all available backends.
+    // "-backend <name>" tests one backend.
+    parseArgs(argc, argv);
+
+    // Make sure we have an OpenGL context : create dummy GLFW window
+    if (not glfwInit()) {
+        printf("Failed to initialize GLFW\n");
+        return 1;
+    }
+
+    int width=10, height=10;
+    
+    static const char windowTitle[] = "OpenSubdiv OSD regression";
+    if (not (g_window=glfwCreateWindow(width, height, windowTitle, NULL, NULL))) {
+        printf("Failed to open window.\n");
+        glfwTerminate();
+        return 1;
+    }
+    glfwMakeContextCurrent(g_window);
+    
+#if defined(OSD_USES_GLEW)
+    if (GLenum r = glewInit() != GLEW_OK) {
+        printf("Failed to initialize glew. error = %d\n", r);
+        exit(1);
+    }
+#endif
+
+    printf("precision : %f\n",PRECISION);
+
+    int levels=5, total=0;
+
+    if (g_Backend == -1) {
+        for (int i = 0; i < kBackendCount; ++i)
+            total += checkBackend (i, levels);
+    } else {
+        total += checkBackend (g_Backend, levels);
+    }
+
+    glfwTerminate();
 
     if (total==0)
       printf("All tests passed.\n");

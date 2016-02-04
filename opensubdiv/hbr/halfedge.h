@@ -1,63 +1,32 @@
 //
-//     Copyright (C) Pixar. All rights reserved.
+//   Copyright 2013 Pixar
 //
-//     This license governs use of the accompanying software. If you
-//     use the software, you accept this license. If you do not accept
-//     the license, do not use the software.
+//   Licensed under the Apache License, Version 2.0 (the "Apache License")
+//   with the following modification; you may not use this file except in
+//   compliance with the Apache License and the following modification to it:
+//   Section 6. Trademarks. is deleted and replaced with:
 //
-//     1. Definitions
-//     The terms "reproduce," "reproduction," "derivative works," and
-//     "distribution" have the same meaning here as under U.S.
-//     copyright law.  A "contribution" is the original software, or
-//     any additions or changes to the software.
-//     A "contributor" is any person or entity that distributes its
-//     contribution under this license.
-//     "Licensed patents" are a contributor's patent claims that read
-//     directly on its contribution.
+//   6. Trademarks. This License does not grant permission to use the trade
+//      names, trademarks, service marks, or product names of the Licensor
+//      and its affiliates, except as required to comply with Section 4(c) of
+//      the License and to reproduce the content of the NOTICE file.
 //
-//     2. Grant of Rights
-//     (A) Copyright Grant- Subject to the terms of this license,
-//     including the license conditions and limitations in section 3,
-//     each contributor grants you a non-exclusive, worldwide,
-//     royalty-free copyright license to reproduce its contribution,
-//     prepare derivative works of its contribution, and distribute
-//     its contribution or any derivative works that you create.
-//     (B) Patent Grant- Subject to the terms of this license,
-//     including the license conditions and limitations in section 3,
-//     each contributor grants you a non-exclusive, worldwide,
-//     royalty-free license under its licensed patents to make, have
-//     made, use, sell, offer for sale, import, and/or otherwise
-//     dispose of its contribution in the software or derivative works
-//     of the contribution in the software.
+//   You may obtain a copy of the Apache License at
 //
-//     3. Conditions and Limitations
-//     (A) No Trademark License- This license does not grant you
-//     rights to use any contributor's name, logo, or trademarks.
-//     (B) If you bring a patent claim against any contributor over
-//     patents that you claim are infringed by the software, your
-//     patent license from such contributor to the software ends
-//     automatically.
-//     (C) If you distribute any portion of the software, you must
-//     retain all copyright, patent, trademark, and attribution
-//     notices that are present in the software.
-//     (D) If you distribute any portion of the software in source
-//     code form, you may do so only under this license by including a
-//     complete copy of this license with your distribution. If you
-//     distribute any portion of the software in compiled or object
-//     code form, you may only do so under a license that complies
-//     with this license.
-//     (E) The software is licensed "as-is." You bear the risk of
-//     using it. The contributors give no express warranties,
-//     guarantees or conditions. You may have additional consumer
-//     rights under your local laws which this license cannot change.
-//     To the extent permitted under your local laws, the contributors
-//     exclude the implied warranties of merchantability, fitness for
-//     a particular purpose and non-infringement.
+//       http://www.apache.org/licenses/LICENSE-2.0
 //
-#ifndef HBRHALFEDGE_H
-#define HBRHALFEDGE_H
+//   Unless required by applicable law or agreed to in writing, software
+//   distributed under the Apache License with the above modification is
+//   distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+//   KIND, either express or implied. See the Apache License for the specific
+//   language governing permissions and limitations under the Apache License.
+//
+
+#ifndef OPENSUBDIV3_HBRHALFEDGE_H
+#define OPENSUBDIV3_HBRHALFEDGE_H
 
 #include <assert.h>
+#include <stddef.h>
 #include <cstring>
 #include <iostream>
 
@@ -81,9 +50,8 @@ template <class T> std::ostream& operator<<(std::ostream& out, const HbrHalfedge
 
 template <class T> class HbrHalfedge {
 
-public:
-
-    HbrHalfedge(): opposite(0), incidentFace(0), incidentVertex(0), vchild(0), sharpness(0.0f)
+private:
+    HbrHalfedge(): opposite(0), incidentVertex(-1), vchild(-1), sharpness(0.0f)
 #ifdef HBRSTITCH
     , stitchccw(1), raystitchccw(1)
 #endif
@@ -91,6 +59,8 @@ public:
     {
     }
 
+    HbrHalfedge(const HbrHalfedge &/* edge */) {}
+    
     ~HbrHalfedge();
 
     void Clear();
@@ -98,6 +68,7 @@ public:
     // Finish the initialization of the halfedge. Should only be
     // called by HbrFace
     void Initialize(HbrHalfedge<T>* opposite, int index, HbrVertex<T>* origin, unsigned int *fvarbits, HbrFace<T>* face);
+public:
 
     // Returns the opposite half edge
     HbrHalfedge<T>* GetOpposite() const { return opposite; }
@@ -107,63 +78,95 @@ public:
 
     // Returns the next clockwise halfedge around the incident face
     HbrHalfedge<T>* GetNext() const {
-        if (lastedge) {
-            return (HbrHalfedge<T>*) ((char*) this - (incidentFace->GetNumVertices() - 1) * sizeof(HbrHalfedge<T>));
+        if (m_index == 4) {
+            const size_t edgesize = sizeof(HbrHalfedge<T>) + sizeof(HbrFace<T>*);
+            if (lastedge) {
+                return (HbrHalfedge<T>*) ((char*) this - (GetFace()->GetNumVertices() - 1) * edgesize);
+            } else {
+                return (HbrHalfedge<T>*) ((char*) this + edgesize);
+            }
         } else {
-            return (HbrHalfedge<T>*) ((char*) this + sizeof(HbrHalfedge<T>));
+            if (lastedge) {
+                return (HbrHalfedge<T>*) ((char*) this - (m_index) * sizeof(HbrHalfedge<T>));
+            } else {
+                return (HbrHalfedge<T>*) ((char*) this + sizeof(HbrHalfedge<T>));
+            }
         }
     }
 
     // Returns the previous counterclockwise halfedge around the incident face
     HbrHalfedge<T>* GetPrev() const {
+        const size_t edgesize = (m_index == 4) ? 
+            (sizeof(HbrHalfedge<T>) + sizeof(HbrFace<T>*)) :
+            sizeof(HbrHalfedge<T>);
         if (firstedge) {
-            return (HbrHalfedge<T>*) ((char*) this + (incidentFace->GetNumVertices() - 1) * sizeof(HbrHalfedge<T>));
+            return (HbrHalfedge<T>*) ((char*) this + (GetFace()->GetNumVertices() - 1) * edgesize);
         } else {
-            return (HbrHalfedge<T>*) ((char*) this - sizeof(HbrHalfedge<T>));
-        }
-    }
-
-    // Returns the index of the edge relative to its incident face.
-    // This relies on knowledge of the face's edge allocation pattern
-    int GetIndex() const {
-        // we allocate room for up to 4 values (to handle tri or quad)
-        // in the edges array.  If there are more than that, they _all_
-        // go in the extra edges array.
-        if (this >= incidentFace->edges &&
-            this < incidentFace->edges + 4) {
-            return int(this - incidentFace->edges);
-        } else {
-            return int(this - incidentFace->extraedges);
+            return (HbrHalfedge<T>*) ((char*) this - edgesize);
         }
     }
 
     // Returns the incident vertex
     HbrVertex<T>* GetVertex() const {
+        return GetMesh()->GetVertex(incidentVertex);
+        }
+
+    // Returns the incident vertex
+    HbrVertex<T>* GetVertex(HbrMesh<T> *mesh) const {
+        return mesh->GetVertex(incidentVertex);
+    }
+
+    // Returns the incident vertex
+    int GetVertexID() const {
         return incidentVertex;
     }
 
     // Returns the source vertex
     HbrVertex<T>* GetOrgVertex() const {
+        return GetVertex();
+    }
+
+    // Returns the source vertex
+    HbrVertex<T>* GetOrgVertex(HbrMesh<T> *mesh) const {
+        return GetVertex(mesh);
+    }
+
+    // Returns the source vertex id
+    int GetOrgVertexID() const {
         return incidentVertex;
     }
 
     // Changes the origin vertex. Generally not a good idea to do
-    void SetOrgVertex(HbrVertex<T>* v) { incidentVertex = v; }
+    void SetOrgVertex(HbrVertex<T>* v) { incidentVertex = v->GetID(); }
 
     // Returns the destination vertex
     HbrVertex<T>* GetDestVertex() const { return GetNext()->GetOrgVertex(); }
 
+    // Returns the destination vertex
+    HbrVertex<T>* GetDestVertex(HbrMesh<T> *mesh) const { return GetNext()->GetOrgVertex(mesh); }
+
+    // Returns the destination vertex ID
+    int GetDestVertexID() const { return GetNext()->GetOrgVertexID(); }
+    
     // Returns the incident facet
-    HbrFace<T>* GetFace() const { return incidentFace; }
+    HbrFace<T>* GetFace() const {
+        if (m_index == 4) {
+            // Pointer to face is stored after the data for the edge
+            return *(HbrFace<T>**)((char *) this + sizeof(HbrHalfedge<T>));
+        } else {
+            return (HbrFace<T>*) ((char*) this - (m_index) * sizeof(HbrHalfedge<T>) -
+                offsetof(HbrFace<T>, edges));
+        }
+    }
 
     // Returns the mesh to which this edge belongs
-    HbrMesh<T>* GetMesh() const { return incidentFace->GetMesh(); }
+    HbrMesh<T>* GetMesh() const { return GetFace()->GetMesh(); }
 
     // Returns the face on the right
     HbrFace<T>* GetRightFace() const { return opposite ? opposite->GetLeftFace() : NULL; }
 
     // Return the face on the left of the halfedge
-    HbrFace<T>* GetLeftFace() const { return incidentFace; }
+    HbrFace<T>* GetLeftFace() const { return GetFace(); }
 
     // Returns whether this is a boundary edge
     bool IsBoundary() const { return opposite == 0; }
@@ -184,7 +187,12 @@ public:
         if (fvarinfsharp) {
             const int fvarcount = GetMesh()->GetFVarCount();
             int fvarbitsSizePerEdge = ((fvarcount + 15) / 16);
-            memcpy(fvarinfsharp, edge->getFVarInfSharp(), fvarbitsSizePerEdge * sizeof(unsigned int));
+            
+            if (edge->IsSharp(true)) {
+                memset(fvarinfsharp, 0x55555555, fvarbitsSizePerEdge * sizeof(unsigned int));
+            } else {
+                memcpy(fvarinfsharp, edge->getFVarInfSharp(), fvarbitsSizePerEdge * sizeof(unsigned int));
+            }
         }
     }
 
@@ -219,9 +227,12 @@ public:
 
     // Make sure the edge has its opposite face
     void GuaranteeNeighbor();
+    
+    // True if the edge has a subdivided child vertex
+    bool HasChild() const { return vchild!=-1; }
 
     // Remove the reference to subdivided vertex
-    void RemoveChild() { vchild = 0; }
+    void RemoveChild() { vchild = -1; }
 
     // Sharpness constants
     enum Mask {
@@ -333,15 +344,15 @@ public:
     }
 
     void* GetStitchData() const {
-        if (stitchdatavalid) return *(incidentFace->stitchDatas + GetIndex());
+        if (stitchdatavalid) return GetMesh()->GetStitchData(this);
         else return 0;
     }
 
     void SetStitchData(void* data) {
-        *(incidentFace->stitchDatas + GetIndex()) = data;
+        GetMesh()->SetStitchData(this, data);
         stitchdatavalid = data ? 1 : 0;
         if (opposite) {
-            *(opposite->incidentFace->stitchDatas + opposite->GetIndex()) = data;
+            opposite->GetMesh()->SetStitchData(opposite, data);
             opposite->stitchdatavalid = stitchdatavalid;
         }
     }
@@ -376,34 +387,57 @@ public:
     void SetCoarse(bool c) { coarse = c; }
     bool IsCoarse() const { return coarse; }
 
+    friend class HbrFace<T>;
+
 private:
     HbrHalfedge<T>* opposite;
-    HbrFace<T>* incidentFace;
+    // Index of incident vertex
+    int incidentVertex;
 
-    HbrVertex<T>* incidentVertex;
-
-    // Child vertex
-    HbrVertex<T>* vchild;
+    // Index of subdivided vertex child
+    int vchild;
     float sharpness;
 
 #ifdef HBRSTITCH
-    unsigned char stitchccw:1;
-    unsigned char raystitchccw:1;
-    unsigned char stitchdatavalid:1;
+    unsigned short stitchccw:1;
+    unsigned short raystitchccw:1;
+    unsigned short stitchdatavalid:1;
 #endif
-    unsigned char coarse:1;
-    unsigned char lastedge:1;
-    unsigned char firstedge:1;
+    unsigned short coarse:1;
+    unsigned short lastedge:1;
+    unsigned short firstedge:1;
+
+    // If m_index = 0, 1, 2 or 3: we are the m_index edge of an
+    // incident face with 3 or 4 vertices.
+    // If m_index = 4: our incident face has more than 4 vertices, and
+    // we must do some extra math to determine what our actual index
+    // is. See getIndex()
+    unsigned short m_index:3;
+
+    // Returns the index of the edge relative to its incident face.
+    // This relies on knowledge of the face's edge allocation pattern
+    int getIndex() const {
+        if (m_index < 4) {
+            return m_index;
+        } else {
+            // We allocate room for up to 4 values (to handle tri or
+            // quad) in the edges array.  If there are more than that,
+            // they _all_ go in the faces' extraedges array.
+            HbrFace<T>* incidentFace = *(HbrFace<T>**)((char *) this + sizeof(HbrHalfedge<T>));
+            return int(((char *) this - incidentFace->extraedges) /
+                (sizeof(HbrHalfedge<T>) + sizeof(HbrFace<T>*)));
+        }
+    }
 
     // Returns bitmask indicating whether a given facevarying datum
     // for the edge is infinitely sharp. Each datum has two bits, and
     // if those two bits are set to 3, it means the status has not
     // been computed yet.
     unsigned int *getFVarInfSharp() {
-        unsigned int *fvarbits = incidentFace->fvarbits;
+        unsigned int *fvarbits = GetFace()->fvarbits;
         if (fvarbits) {
             int fvarbitsSizePerEdge = ((GetMesh()->GetFVarCount() + 15) / 16);
-            return fvarbits + GetIndex() * fvarbitsSizePerEdge;
+            return fvarbits + getIndex() * fvarbitsSizePerEdge;
         } else {
             return 0;
         }
@@ -411,36 +445,80 @@ private:
 
 #ifdef HBRSTITCH
     StitchEdge **getStitchEdges() {
-        return incidentFace->stitchEdges + GetMesh()->GetStitchCount() * GetIndex();
+        return GetFace()->stitchEdges + GetMesh()->GetStitchCount() * getIndex();
     }
+#endif
+
+#ifdef HBR_ADAPTIVE
+public:
+    struct adaptiveFlags {
+        unsigned isTransition:1;
+        unsigned isTriangleHead:1;
+        unsigned isWatertightCritical:1;
+        
+        adaptiveFlags() : isTransition(0),isTriangleHead(0),isWatertightCritical(0) { }
+    };
+    
+    adaptiveFlags _adaptiveFlags;
+    
+    bool IsInsideHole() const {
+
+        HbrFace<T> * left = GetLeftFace();       
+        if (left and (not left->IsHole()))
+            return false;
+        
+        HbrFace<T> * right = GetRightFace();
+        if (right and (not right->IsHole()))
+            return false;
+                        
+        return true;
+    }
+    
+    bool IsTransition() const { return _adaptiveFlags.isTransition; }
+
+    bool IsTriangleHead() const { return _adaptiveFlags.isTriangleHead; }
+
+    bool IsWatertightCritical() const { return _adaptiveFlags.isWatertightCritical; }
 #endif
 };
 
 template <class T>
 void
-HbrHalfedge<T>::Initialize(HbrHalfedge<T>* opposite, int index, HbrVertex<T>* origin, unsigned int *fvarbits, HbrFace<T>* face) {
+HbrHalfedge<T>::Initialize(HbrHalfedge<T>* opposite, int index, HbrVertex<T>* origin,
+    unsigned int *fvarbits, HbrFace<T>* face) {
+    HbrMesh<T> *mesh = face->GetMesh();
+    if (face->GetNumVertices() <= 4) {
+        m_index = index;
+    } else {
+        m_index = 4;
+        // Assumes upstream allocation ensured we have extra storage
+        // for pointer to face after the halfedge data structure
+        // itself
+        *(HbrFace<T>**)((char *) this + sizeof(HbrHalfedge<T>)) = face;
+    }
+    
     this->opposite = opposite;
-    incidentVertex = origin;
-    incidentFace = face;
+    incidentVertex = origin->GetID();
     lastedge = (index == face->GetNumVertices() - 1);
     firstedge = (index == 0);
     if (opposite) {
         sharpness = opposite->sharpness;
 #ifdef HBRSTITCH
-        StitchEdge **stitchEdges = getStitchEdges();
-        for (int i = 0; i < face->GetMesh()->GetStitchCount(); ++i) {
+        StitchEdge **stitchEdges = face->stitchEdges +
+            mesh->GetStitchCount() * index;
+        for (int i = 0; i < mesh->GetStitchCount(); ++i) {
             stitchEdges[i] = opposite->getStitchEdges()[i];
         }
         stitchccw = opposite->stitchccw;
         raystitchccw = opposite->raystitchccw;
         stitchdatavalid = 0;
         if (stitchEdges && opposite->GetStitchData()) {
-            *(incidentFace->stitchDatas + index) = opposite->GetStitchData();
+            mesh->SetStitchData(this, opposite->GetStitchData());
             stitchdatavalid = 1;
         }
 #endif
         if (fvarbits) {
-            const int fvarcount = face->GetMesh()->GetFVarCount();
+            const int fvarcount = mesh->GetFVarCount();
             int fvarbitsSizePerEdge = ((fvarcount + 15) / 16);
             memcpy(fvarbits, opposite->getFVarInfSharp(), fvarbitsSizePerEdge * sizeof(unsigned int));
         }
@@ -448,7 +526,7 @@ HbrHalfedge<T>::Initialize(HbrHalfedge<T>* opposite, int index, HbrVertex<T>* or
         sharpness = 0.0f;
 #ifdef HBRSTITCH
         StitchEdge **stitchEdges = getStitchEdges();
-        for (int i = 0; i < face->GetMesh()->GetStitchCount(); ++i) {
+        for (int i = 0; i < mesh->GetStitchCount(); ++i) {
             stitchEdges[i] = 0;
         }
         stitchccw = 1;
@@ -456,7 +534,7 @@ HbrHalfedge<T>::Initialize(HbrHalfedge<T>* opposite, int index, HbrVertex<T>* or
         stitchdatavalid = 0;
 #endif
         if (fvarbits) {
-            const int fvarcount = face->GetMesh()->GetFVarCount();
+            const int fvarcount = mesh->GetFVarCount();
             int fvarbitsSizePerEdge = ((fvarcount + 15) / 16);
             memset(fvarbits, 0xff, fvarbitsSizePerEdge * sizeof(unsigned int));
         }
@@ -473,34 +551,38 @@ void
 HbrHalfedge<T>::Clear() {
     if (opposite) {
         opposite->opposite = 0;
-        if (vchild) {
+        if (vchild != -1) {
             // Transfer ownership of the vchild to the opposite ptr
             opposite->vchild = vchild;
+
+            HbrVertex<T> *vchildVert = GetMesh()->GetVertex(vchild);
             // Done this way just for assertion sanity
-            vchild->SetParent(static_cast<HbrHalfedge*>(0));
-            vchild->SetParent(opposite);
-            vchild = 0;
+            vchildVert->SetParent(static_cast<HbrHalfedge*>(0));
+            vchildVert->SetParent(opposite);
+            vchild = -1;
         }
         opposite = 0;
     }
     // Orphan the child vertex
-    else if (vchild) {
-        vchild->SetParent(static_cast<HbrHalfedge*>(0));
-        vchild = 0;
+    else if (vchild != -1) {
+        HbrVertex<T> *vchildVert = GetMesh()->GetVertex(vchild);        
+        vchildVert->SetParent(static_cast<HbrHalfedge*>(0));
+        vchild = -1;
     }
 }
 
 template <class T>
 HbrVertex<T>*
 HbrHalfedge<T>::Subdivide() {
-    if (vchild) return vchild;
+    HbrMesh<T>* mesh = GetMesh();
+    if (vchild != -1) return mesh->GetVertex(vchild);
     // Make sure that our opposite doesn't "own" a subdivided vertex
     // already. If it does, use that
-    if (opposite && opposite->vchild) return opposite->vchild;
-    HbrMesh<T>* mesh = GetMesh();
-    vchild = mesh->GetSubdivision()->Subdivide(mesh, this);
-    vchild->SetParent(this);
-    return vchild;
+    if (opposite && opposite->vchild != -1) return mesh->GetVertex(opposite->vchild);
+    HbrVertex<T>* vchildVert = mesh->GetSubdivision()->Subdivide(mesh, this);
+    vchild = vchildVert->GetID();
+    vchildVert->SetParent(this);
+    return vchildVert;
 }
 
 template <class T>
@@ -586,6 +668,11 @@ HbrHalfedge<T>::GetFVarInfiniteSharp(int datum) {
 template <class T>
 bool
 HbrHalfedge<T>::IsFVarInfiniteSharpAnywhere() {
+
+    if (sharpness > k_Smooth) {
+        return true;
+    }
+
     for (int i = 0; i < GetMesh()->GetFVarCount(); ++i) {
         if (GetFVarInfiniteSharp(i)) return true;
     }
@@ -596,14 +683,13 @@ template <class T>
 float
 HbrHalfedge<T>::GetFVarSharpness(int datum, bool ignoreGeometry) {
 
-    bool infsharp = GetFVarInfiniteSharp(datum);
-
-    if (infsharp) return k_InfinitelySharp;
+    if (GetFVarInfiniteSharp(datum)) return k_InfinitelySharp;
 
     if (!ignoreGeometry) {
         // If it's a geometrically sharp edge it's going to be a
         // facevarying sharp edge too
         if (sharpness > k_Smooth) {
+            SetFVarInfiniteSharp(datum, true);
             return k_InfinitelySharp;
         }
     }
@@ -651,4 +737,4 @@ using namespace OPENSUBDIV_VERSION;
 
 } // end namespace OpenSubdiv
 
-#endif /* HBRHALFEDGE_H */
+#endif /* OPENSUBDIV3_HBRHALFEDGE_H */

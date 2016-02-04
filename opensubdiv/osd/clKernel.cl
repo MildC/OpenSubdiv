@@ -1,346 +1,313 @@
 //
-//     Copyright (C) Pixar. All rights reserved.
+//   Copyright 2013 Pixar
 //
-//     This license governs use of the accompanying software. If you
-//     use the software, you accept this license. If you do not accept
-//     the license, do not use the software.
+//   Licensed under the Apache License, Version 2.0 (the "Apache License")
+//   with the following modification; you may not use this file except in
+//   compliance with the Apache License and the following modification to it:
+//   Section 6. Trademarks. is deleted and replaced with:
 //
-//     1. Definitions
-//     The terms "reproduce," "reproduction," "derivative works," and
-//     "distribution" have the same meaning here as under U.S.
-//     copyright law.  A "contribution" is the original software, or
-//     any additions or changes to the software.
-//     A "contributor" is any person or entity that distributes its
-//     contribution under this license.
-//     "Licensed patents" are a contributor's patent claims that read
-//     directly on its contribution.
+//   6. Trademarks. This License does not grant permission to use the trade
+//      names, trademarks, service marks, or product names of the Licensor
+//      and its affiliates, except as required to comply with Section 4(c) of
+//      the License and to reproduce the content of the NOTICE file.
 //
-//     2. Grant of Rights
-//     (A) Copyright Grant- Subject to the terms of this license,
-//     including the license conditions and limitations in section 3,
-//     each contributor grants you a non-exclusive, worldwide,
-//     royalty-free copyright license to reproduce its contribution,
-//     prepare derivative works of its contribution, and distribute
-//     its contribution or any derivative works that you create.
-//     (B) Patent Grant- Subject to the terms of this license,
-//     including the license conditions and limitations in section 3,
-//     each contributor grants you a non-exclusive, worldwide,
-//     royalty-free license under its licensed patents to make, have
-//     made, use, sell, offer for sale, import, and/or otherwise
-//     dispose of its contribution in the software or derivative works
-//     of the contribution in the software.
+//   You may obtain a copy of the Apache License at
 //
-//     3. Conditions and Limitations
-//     (A) No Trademark License- This license does not grant you
-//     rights to use any contributor's name, logo, or trademarks.
-//     (B) If you bring a patent claim against any contributor over
-//     patents that you claim are infringed by the software, your
-//     patent license from such contributor to the software ends
-//     automatically.
-//     (C) If you distribute any portion of the software, you must
-//     retain all copyright, patent, trademark, and attribution
-//     notices that are present in the software.
-//     (D) If you distribute any portion of the software in source
-//     code form, you may do so only under this license by including a
-//     complete copy of this license with your distribution. If you
-//     distribute any portion of the software in compiled or object
-//     code form, you may only do so under a license that complies
-//     with this license.
-//     (E) The software is licensed "as-is." You bear the risk of
-//     using it. The contributors give no express warranties,
-//     guarantees or conditions. You may have additional consumer
-//     rights under your local laws which this license cannot change.
-//     To the extent permitted under your local laws, the contributors
-//     exclude the implied warranties of merchantability, fitness for
-//     a particular purpose and non-infringement.
+//       http://www.apache.org/licenses/LICENSE-2.0
+//
+//   Unless required by applicable law or agreed to in writing, software
+//   distributed under the Apache License with the above modification is
+//   distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+//   KIND, either express or implied. See the Apache License for the specific
+//   language governing permissions and limitations under the Apache License.
 //
 
-struct Vertex
-{
-    float v[NUM_VERTEX_ELEMENTS];
+struct Vertex {
+    float v[LENGTH];
 };
 
-struct Varying
-{
-    float v[NUM_VARYING_ELEMENTS];
+static void clear(struct Vertex *vertex) {
+    for (int i = 0; i < LENGTH; i++) {
+        vertex->v[i] = 0.0f;
+    }
+}
+
+static void addWithWeight(struct Vertex *dst,
+                          __global float *srcOrigin,
+                          int index, float weight) {
+
+    __global float *src = srcOrigin + index * SRC_STRIDE;
+    for (int i = 0; i < LENGTH; ++i) {
+        dst->v[i] += src[i] * weight;
+    }
+}
+
+static void writeVertex(__global float *dstOrigin,
+                        int index,
+                        struct Vertex *src) {
+
+    __global float *dst = dstOrigin + index * DST_STRIDE;
+    for (int i = 0; i < LENGTH; ++i) {
+        dst[i] = src->v[i];
+    }
+}
+static void writeVertexStride(__global float *dstOrigin,
+                              int index,
+                              struct Vertex *src,
+                              int stride) {
+
+    __global float *dst = dstOrigin + index * stride;
+    for (int i = 0; i < LENGTH; ++i) {
+        dst[i] = src->v[i];
+    }
+}
+
+
+__kernel void computeStencils(
+    __global float * src, int srcOffset,
+    __global float * dst, int dstOffset,
+    __global int * sizes,
+    __global int * offsets,
+    __global int * indices,
+    __global float * weights,
+    int batchStart, int batchEnd) {
+
+    int current = get_global_id(0) + batchStart;
+
+    if (current>=batchEnd) {
+        return;
+    }
+
+    struct Vertex v;
+    clear(&v);
+
+    int size = sizes[current],
+        offset = offsets[current];
+
+    src += srcOffset;
+    dst += dstOffset;
+
+    for (int i=0; i<size; ++i) {
+        addWithWeight(&v, src, indices[offset+i], weights[offset+i]);
+    }
+
+    writeVertex(dst, current, &v);
+}
+
+__kernel void computeStencilsDerivatives(
+    __global float * src, int srcOffset,
+    __global float * dst, int dstOffset,
+    __global float * du,  int duOffset, int duStride,
+    __global float * dv,  int dvOffset, int dvStride,
+    __global int * sizes,
+    __global int * offsets,
+    __global int * indices,
+    __global float * weights,
+    __global float * duWeights,
+    __global float * dvWeights,
+    int batchStart, int batchEnd) {
+
+    int current = get_global_id(0) + batchStart;
+
+    if (current>=batchEnd) {
+        return;
+    }
+
+    struct Vertex v, vdu, vdv;
+    clear(&v);
+    clear(&vdu);
+    clear(&vdv);
+
+    int size = sizes[current],
+        offset = offsets[current];
+
+    if (src) src += srcOffset;
+    if (dst) dst += dstOffset;
+    if (du)  du  += duOffset;
+    if (dv)  dv  += dvOffset;
+
+    for (int i=0; i<size; ++i) {
+        int ofs = offset + i;
+        int vid = indices[ofs];
+        if (weights)   addWithWeight(  &v, src, vid,   weights[ofs]);
+        if (duWeights) addWithWeight(&vdu, src, vid, duWeights[ofs]);
+        if (dvWeights) addWithWeight(&vdv, src, vid, dvWeights[ofs]);
+    }
+
+    if (dst) writeVertex      (dst, current, &v);
+    if (du)  writeVertexStride(du,  current, &vdu, duStride);
+    if (dv)  writeVertexStride(dv,  current, &vdv, dvStride);
+}
+
+// ---------------------------------------------------------------------------
+
+struct PatchArray {
+    int patchType;
+    int numPatches;
+    int indexBase;        // an offset within the index buffer
+    int primitiveIdBase;  // an offset within the patch param buffer
 };
 
-__global void clearVertex(struct Vertex *vertex) {
+struct PatchCoord {
+   int arrayIndex;
+   int patchIndex;
+   int vertIndex;
+   float s;
+   float t;
+};
 
-    for (int i = 0; i < NUM_VERTEX_ELEMENTS; i++) {
-        vertex->v[i] = 0;
-    }
-}
-__global void clearVarying(struct Varying *varying) {
+struct PatchParam {
+    uint field0;
+    uint field1;
+    float sharpness;
+};
 
-    for (int i = 0; i < NUM_VARYING_ELEMENTS; i++) {
-        varying->v[i] = 0;
-    }
-}
+static void getBSplineWeights(float t, float *point, float *deriv) {
+    // The four uniform cubic B-Spline basis functions evaluated at t:
+    float one6th = 1.0f / 6.0f;
 
-__global void addWithWeight(struct Vertex *dst, __global struct Vertex *src, float weight) {
+    float t2 = t * t;
+    float t3 = t * t2;
 
-    for (int i = 0; i < NUM_VERTEX_ELEMENTS; i++) {
-        dst->v[i] += src->v[i] * weight;
-    }
-}
+    point[0] = one6th * (1.0f - 3.0f*(t -      t2) -      t3);
+    point[1] = one6th * (4.0f           - 6.0f*t2  + 3.0f*t3);
+    point[2] = one6th * (1.0f + 3.0f*(t +      t2  -      t3));
+    point[3] = one6th * (                                 t3);
 
-__global void addVaryingWithWeight(struct Varying *dst, __global struct Varying *src, float weight) {
-
-    for (int i = 0; i < NUM_VARYING_ELEMENTS; i++) {
-        dst->v[i] += src->v[i] * weight;
-    }
-}
-
-__kernel void computeBilinearEdge(__global struct Vertex *vertex,
-                                   __global struct Varying *varying,
-                                   __global int *E_IT,
-                                   int ofs_E_IT,
-                                   int offset, int start, int end) {
-    E_IT += ofs_E_IT;
-
-    int i = start + get_global_id(0);
-    int eidx0 = E_IT[2*i+0];
-    int eidx1 = E_IT[2*i+1];
-
-    struct Vertex dst;
-    struct Varying dstVarying;
-    clearVertex(&dst);
-    clearVarying(&dstVarying);
-
-    addWithWeight(&dst, &vertex[eidx0], 0.5f);
-    addWithWeight(&dst, &vertex[eidx1], 0.5f);
-
-    vertex[i+offset] = dst;
-
-    if (varying) {
-        addVaryingWithWeight(&dstVarying, &varying[eidx0], 0.5f);
-        addVaryingWithWeight(&dstVarying, &varying[eidx1], 0.5f);
-        varying[i+offset] = dstVarying;
-    }
+    // Derivatives of the above four basis functions at t:
+    deriv[0] = -0.5f*t2 +      t - 0.5f;
+    deriv[1] =  1.5f*t2 - 2.0f*t;
+    deriv[2] = -1.5f*t2 +      t + 0.5f;
+    deriv[3] =  0.5f*t2;
 }
 
-__kernel void computeBilinearVertex(__global struct Vertex *vertex,
-                                     __global struct Varying *varying,
-                                     __global int *V_ITa,
-                                     int ofs_V_ITa,
-                                     int offset, int start, int end) {
+static void adjustBoundaryWeights(uint bits, float *sWeights, float *tWeights) {
+    int boundary = ((bits >> 8) & 0xf);
 
-    V_ITa += ofs_V_ITa;
-
-    int i = start + get_global_id(0);
-
-    int p = V_ITa[i];
-
-    struct Vertex dst;
-    clearVertex(&dst);
-    addWithWeight(&dst, &vertex[p], 1.0f);
-
-    vertex[i+offset] = dst;
-
-    if (varying) {
-        struct Varying dstVarying;
-        clearVarying(&dstVarying);
-        addVaryingWithWeight(&dstVarying, &varying[p], 1.0f);
-        varying[i+offset] = dstVarying;
+    if (boundary & 1) {
+        tWeights[2] -= tWeights[0];
+        tWeights[1] += 2*tWeights[0];
+        tWeights[0] = 0;
+    }
+    if (boundary & 2) {
+        sWeights[1] -= sWeights[3];
+        sWeights[2] += 2*sWeights[3];
+        sWeights[3] = 0;
+    }
+    if (boundary & 4) {
+        tWeights[1] -= tWeights[3];
+        tWeights[2] += 2*tWeights[3];
+        tWeights[3] = 0;
+    }
+    if (boundary & 8) {
+        sWeights[2] -= sWeights[0];
+        sWeights[1] += 2*sWeights[0];
+        sWeights[0] = 0;
     }
 }
 
-// ----------------------------------------------------------------------------------------
-
-__kernel void computeFace(__global struct Vertex *vertex,
-                          __global struct Varying *varying,
-                          __global int *F_IT,
-                          __global int *F_ITa,
-                          int ofs_F_IT, int ofs_F_ITa,
-                          int offset, int start, int end) {
-
-    F_IT += ofs_F_IT;
-    F_ITa += ofs_F_ITa;
-
-    int i = start + get_global_id(0);
-    int h = F_ITa[2*i];
-    int n = F_ITa[2*i+1];
-
-    float weight = 1.0f/n;
-
-    struct Vertex dst;
-    struct Varying dstVarying;
-    clearVertex(&dst);
-    clearVarying(&dstVarying);
-    for (int j=0; j<n; ++j) {
-        int index = F_IT[h+j];
-        addWithWeight(&dst, &vertex[index], weight);
-        if(varying) addVaryingWithWeight(&dstVarying, &varying[index], weight);
-    }
-    vertex[i+offset] = dst;
-    if(varying) varying[i+offset] = dstVarying;
+static int getDepth(uint patchBits) {
+    return (patchBits & 0xf);
 }
 
-__kernel void computeEdge(__global struct Vertex *vertex,
-                          __global struct Varying *varying,
-                          __global int *E_IT,
-                          __global float *E_W,
-                          int ofs_E_IT, int ofs_E_W,
-                          int offset, int start, int end) {
-
-    E_IT += ofs_E_IT;
-    E_W += ofs_E_W;
-
-    int i = start + get_global_id(0);
-    int eidx0 = E_IT[4*i+0];
-    int eidx1 = E_IT[4*i+1];
-    int eidx2 = E_IT[4*i+2];
-    int eidx3 = E_IT[4*i+3];
-
-    float vertWeight = E_W[i*2+0];
-
-    // Fully sharp edge : vertWeight = 0.5f;
-    struct Vertex dst;
-    struct Varying dstVarying;
-    clearVertex(&dst);
-    clearVarying(&dstVarying);
-
-    addWithWeight(&dst, &vertex[eidx0], vertWeight);
-    addWithWeight(&dst, &vertex[eidx1], vertWeight);
-
-    if (eidx2 > -1) {
-        float faceWeight = E_W[i*2+1];
-
-        addWithWeight(&dst, &vertex[eidx2], faceWeight);
-        addWithWeight(&dst, &vertex[eidx3], faceWeight);
-    }
-
-    vertex[i+offset] = dst;
-
-    if (varying) {
-        addVaryingWithWeight(&dstVarying, &varying[eidx0], 0.5f);
-        addVaryingWithWeight(&dstVarying, &varying[eidx1], 0.5f);
-        varying[i+offset] = dstVarying;
-    }
-}
-
-__kernel void computeVertexA(__global struct Vertex *vertex,
-                             __global struct Varying *varying,
-                             __global int *V_ITa,
-                             __global float *V_W,
-                             int ofs_V_ITa, int ofs_V_W,
-                             int offset, int start, int end, int pass) {
-    V_ITa += ofs_V_ITa;
-    V_W += ofs_V_W;
-
-    int i = start + get_global_id(0);
-    int n     = V_ITa[5*i+1];
-    int p     = V_ITa[5*i+2];
-    int eidx0 = V_ITa[5*i+3];
-    int eidx1 = V_ITa[5*i+4];
-
-    float weight = (pass==1) ? V_W[i] : 1.0f - V_W[i];
-
-    // In the case of fractional weight, the weight must be inverted since
-    // the value is shared with the k_Smooth kernel (statistically the
-    // k_Smooth kernel runs much more often than this one)
-    if (weight>0.0f && weight<1.0f && n > 0)
-        weight=1.0f-weight;
-
-    struct Vertex dst;
-    if (not pass)
-        clearVertex(&dst);
-    else
-        dst = vertex[i+offset];
-
-    if (eidx0==-1 || (pass==0 && (n==-1)) ) {
-        addWithWeight(&dst, &vertex[p], weight);
+static float getParamFraction(uint patchBits) {
+    bool nonQuadRoot = (patchBits >> 4) & 0x1;
+    int depth = getDepth(patchBits);
+    if (nonQuadRoot) {
+        return 1.0f / (float)( 1 << (depth-1) );
     } else {
-        addWithWeight(&dst, &vertex[p], weight * 0.75f);
-        addWithWeight(&dst, &vertex[eidx0], weight * 0.125f);
-        addWithWeight(&dst, &vertex[eidx1], weight * 0.125f);
-    }
-    vertex[i+offset] = dst;
-
-    if (not pass && varying) {
-        struct Varying dstVarying;
-        clearVarying(&dstVarying);
-        addVaryingWithWeight(&dstVarying, &varying[p], 1.0f);
-        varying[i+offset] = dstVarying;
+        return 1.0f / (float)( 1 << depth );
     }
 }
 
-__kernel void computeVertexB(__global struct Vertex *vertex,
-                             __global struct Varying *varying,
-                             __global int *V_ITa,
-                             __global int *V_IT,
-                             __global float *V_W,
-                             int ofs_V_ITa, int ofs_V_IT, int ofs_V_W,
-                             int offset, int start, int end) {
-    V_ITa += ofs_V_ITa;
-    V_IT += ofs_V_IT;
-    V_W += ofs_V_W;
+static void normalizePatchCoord(uint patchBits, float *uv) {
+    float frac = getParamFraction(patchBits);
 
-    int i = start + get_global_id(0);
-    int h = V_ITa[5*i];
-    int n = V_ITa[5*i+1];
-    int p = V_ITa[5*i+2];
+    int iu = (patchBits >> 22) & 0x3ff;
+    int iv = (patchBits >> 12) & 0x3ff;
 
-    float weight = V_W[i];
-    float wp = 1.0f/(float)(n*n);
-    float wv = (n-2.0f) * n * wp;
+    // top left corner
+    float pu = (float)iu*frac;
+    float pv = (float)iv*frac;
 
-    struct Vertex dst;
-    clearVertex(&dst);
-
-    addWithWeight(&dst, &vertex[p], weight * wv);
-
-    for (int j = 0; j < n; ++j) {
-        addWithWeight(&dst, &vertex[V_IT[h+j*2]], weight * wp);
-        addWithWeight(&dst, &vertex[V_IT[h+j*2+1]], weight * wp);
-    }
-    vertex[i+offset] = dst;
-
-    if (varying) {
-        struct Varying dstVarying;
-        clearVarying(&dstVarying);
-        addVaryingWithWeight(&dstVarying, &varying[p], 1.0f);
-        varying[i+offset] = dstVarying;
-    }
+    // normalize u,v coordinates
+    uv[0] = (uv[0] - pu) / frac;
+    uv[1] = (uv[1] - pv) / frac;
 }
 
-__kernel void computeLoopVertexB(__global struct Vertex *vertex,
-                                 __global struct Varying *varying,
-                                 __global int *V_ITa,
-                                 __global int *V_IT,
-                                 __global float *V_W,
-                                 int ofs_V_ITa, int ofs_V_IT, int ofs_V_W,
-                                 int offset, int start, int end) {
+__kernel void computePatches(__global float *src, int srcOffset,
+                             __global float *dst, int dstOffset,
+                             __global float *du,  int duOffset, int duStride,
+                             __global float *dv,  int dvOffset, int dvStride,
+                             __global struct PatchCoord *patchCoords,
+                             __global struct PatchArray *patchArrayBuffer,
+                             __global int *patchIndexBuffer,
+                             __global struct PatchParam *patchParamBuffer) {
+    int current = get_global_id(0);
 
-    V_ITa += ofs_V_ITa;
-    V_IT += ofs_V_IT;
-    V_W += ofs_V_W;
+    if (src) src += srcOffset;
+    if (dst) dst += dstOffset;
+    if (du)  du += duOffset;
+    if (dv)  dv += dvOffset;
 
-    int i = start + get_global_id(0);
-    int h = V_ITa[5*i];
-    int n = V_ITa[5*i+1];
-    int p = V_ITa[5*i+2];
+    struct PatchCoord coord = patchCoords[current];
+    struct PatchArray array = patchArrayBuffer[coord.arrayIndex];
 
-    float weight = V_W[i];
-    float wp = 1.0f/(float)(n);
-    float beta = 0.25f * cos((float)(M_PI) * 2.0f * wp) + 0.375f;
-    beta = beta * beta;
-    beta = (0.625f - beta) * wp;
+    int patchType = 6; // array.patchType XXX: REGULAR only for now.
+    int numControlVertices = 16;
+    uint patchBits = patchParamBuffer[coord.patchIndex].field1;
 
-    struct Vertex dst;
-    clearVertex(&dst);
-    addWithWeight(&dst, &vertex[p], weight * (1.0f - (beta * n)));
+    float uv[2] = {coord.s, coord.t};
+    normalizePatchCoord(patchBits, uv);
+    float dScale = (float)(1 << getDepth(patchBits));
 
-    for (int j = 0; j < n; ++j) {
-        addWithWeight(&dst, &vertex[V_IT[h+j]], weight * beta);
+    float wP[20], wDs[20], wDt[20];
+    if (patchType == 6) {  // REGULAR
+        float sWeights[4], tWeights[4], dsWeights[4], dtWeights[4];
+        getBSplineWeights(uv[0], sWeights, dsWeights);
+        getBSplineWeights(uv[1], tWeights, dtWeights);
+
+        adjustBoundaryWeights(patchBits, sWeights, tWeights);
+        adjustBoundaryWeights(patchBits, dsWeights, dtWeights);
+
+        for (int k = 0; k < 4; ++k) {
+            for (int l = 0; l < 4; ++l) {
+                wP[4*k+l]  = sWeights[l]  * tWeights[k];
+                wDs[4*k+l] = dsWeights[l] * tWeights[k]  * dScale;
+                wDt[4*k+l] = sWeights[l]  * dtWeights[k] * dScale;
+            }
+        }
+    } else {
+        // TODO: GREGORY BASIS
     }
-    vertex[i+offset] = dst;
 
-    if (varying) {
-        struct Varying dstVarying;
-        clearVarying(&dstVarying);
-        addVaryingWithWeight(&dstVarying, &varying[p], 1.0f);
-        varying[i+offset] = dstVarying;
+    int indexBase = array.indexBase + coord.vertIndex;
+
+    struct Vertex v;
+    clear(&v);
+    for (int i = 0; i < numControlVertices; ++i) {
+        int index = patchIndexBuffer[indexBase + i];
+        addWithWeight(&v, src, index, wP[i]);
     }
+    writeVertex(dst, current, &v);
+
+    if (du) {
+        struct Vertex vdu;
+        clear(&vdu);
+        for (int i = 0; i < numControlVertices; ++i) {
+            int index = patchIndexBuffer[indexBase + i];
+            addWithWeight(&vdu, src, index, wDs[i]);
+        }
+        writeVertexStride(du, current, &vdu, duStride);
+    }
+    if (dv) {
+        struct Vertex vdv;
+        clear(&vdv);
+        for (int i = 0; i < numControlVertices; ++i) {
+            int index = patchIndexBuffer[indexBase + i];
+            addWithWeight(&vdv, src, index, wDt[i]);
+        }
+        writeVertexStride(dv, current, &vdv, dvStride);
+    }
+
 }
